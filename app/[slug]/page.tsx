@@ -1,6 +1,7 @@
 import { prisma } from "@/lib/prisma";
 import { notFound } from "next/navigation";
 import { Card } from "@/components/ui/card";
+import Link from "next/link";
 import DrawClient from "./draw-client";
 
 export const revalidate = 0;
@@ -51,14 +52,24 @@ export default async function DrawPage({
           </p>
           <div className="mt-4 space-y-4 text-sm leading-7 text-slate-300">
             <p>1. Draw directly on the canvas using the pen, stamps, or emoji.</p>
-            <p>2. Click &ldquo;Prepare drawing&rdquo; to capture what you made.</p>
-            <p>3. Add an anonymous note if you want, then send it.</p>
+            <p>2. Add an anonymous note if you want.</p>
+            <p>3. Hit &ldquo;Send drawing&rdquo; — done!</p>
           </div>
           <div className="mt-6 rounded-2xl border border-white/10 bg-white/5 p-4 text-sm leading-7 text-slate-400">
             No account is needed to submit. Previously sent drawings are not
             visible on this page.
           </div>
         </Card>
+      </div>
+
+      <div className="flex justify-center">
+        <Link
+          href="/"
+          className="rounded-2xl border border-sky-400/30 bg-sky-900/20 px-8 py-5 text-center transition hover:bg-sky-900/40"
+        >
+          <p className="text-lg font-semibold text-sky-300">Create your own drawing link →</p>
+          <p className="mt-1 text-sm text-slate-400">Get your own page and receive drawings from anyone.</p>
+        </Link>
       </div>
     </main>
   );
