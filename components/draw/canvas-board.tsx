@@ -3,7 +3,7 @@
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { Arc, Circle, Ellipse, Group, Layer, Line, Rect, Stage } from "react-konva";
-import { useEffect, useRef, useState } from "react";
+import { forwardRef, useEffect, useImperativeHandle, useRef, useState } from "react";
 import { Eraser, RotateCcw, RotateCw, Trash2 } from "lucide-react";
 import type { Stage as StageType } from "konva/lib/Stage";
 
@@ -79,17 +79,17 @@ interface StampElement {
 
 type CanvasElement = StrokeElement | StampElement;
 
-interface CanvasBoardProps {
-  onExport: (dataUrl: string) => void;
-  height?: number;
-  actionLabel?: string;
+export interface CanvasBoardHandle {
+  exportImage: () => string | null;
 }
 
-export function CanvasBoard({
-  onExport,
+interface CanvasBoardProps {
+  height?: number;
+}
+
+export const CanvasBoard = forwardRef<CanvasBoardHandle, CanvasBoardProps>(function CanvasBoard({
   height = 440,
-  actionLabel = "Save drawing",
-}: CanvasBoardProps) {
+}, ref) {
   const [tool, setTool] = useState<Tool>("pen");
   const [color, setColor] = useState("#38bdf8");
   const [size, setSize] = useState(8);
@@ -185,20 +185,20 @@ export function CanvasBoard({
     });
   };
 
-  const exportImage = () => {
+  const exportImage = (): string | null => {
     const stage = stageRef.current;
-    if (!stage) return;
+    if (!stage) return null;
     const webpDataUrl = stage.toDataURL({
       pixelRatio: 1.5,
       mimeType: "image/webp",
       quality: 0.92,
     });
-    onExport(
-      webpDataUrl.startsWith("data:image/webp")
-        ? webpDataUrl
-        : stage.toDataURL({ pixelRatio: 1.5 })
-    );
+    return webpDataUrl.startsWith("data:image/webp")
+      ? webpDataUrl
+      : stage.toDataURL({ pixelRatio: 1.5 });
   };
+
+  useImperativeHandle(ref, () => ({ exportImage }));
 
   return (
     <div className="grid min-w-0 gap-4 xl:grid-cols-[minmax(0,1fr)_320px] xl:items-start">
@@ -388,14 +388,11 @@ export function CanvasBoard({
           <Button type="button" variant="ghost" size="sm" onClick={clear} aria-label="Clear">
             <Trash2 size={14} />
           </Button>
-          <Button type="button" size="sm" onClick={exportImage}>
-            {actionLabel}
-          </Button>
         </div>
       </div>
     </div>
   );
-}
+});
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 

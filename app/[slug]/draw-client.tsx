@@ -1,8 +1,8 @@
 "use client";
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
-import { CanvasBoard } from "@/components/draw/canvas-board";
+import { CanvasBoard, CanvasBoardHandle } from "@/components/draw/canvas-board";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 
@@ -12,19 +12,15 @@ interface Props {
 }
 
 export default function DrawClient({ slug, displayName }: Props) {
+  const canvasRef = useRef<CanvasBoardHandle>(null);
   const [note, setNote] = useState("");
-  const [imageData, setImageData] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [submitted, setSubmitted] = useState(false);
   const [boardKey, setBoardKey] = useState(0);
 
-  const handleExport = (dataUrl: string) => {
-    setImageData(dataUrl);
-    setError(null);
-  };
-
   const submit = async () => {
+    const imageData = canvasRef.current?.exportImage();
     if (!imageData) return;
     setSubmitting(true);
     setError(null);
@@ -38,18 +34,14 @@ export default function DrawClient({ slug, displayName }: Props) {
       const json = (await res.json()) as { error?: string };
       if (!res.ok) throw new Error(json.error || "Failed to submit");
 
-      // Reset canvas for another drawing
       setNote("");
-      setImageData(null);
       setBoardKey((k) => k + 1);
       setSubmitted(true);
 
-      // Fire confetti
       import("canvas-confetti").then(({ default: confetti }) => {
         confetti({ particleCount: 90, spread: 75, origin: { y: 0.65 } });
       });
 
-      // Auto-dismiss success card after 5 s
       setTimeout(() => setSubmitted(false), 5000);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to submit");
@@ -60,11 +52,7 @@ export default function DrawClient({ slug, displayName }: Props) {
 
   return (
     <div className="min-w-0 space-y-4">
-      <CanvasBoard
-        key={boardKey}
-        onExport={handleExport}
-        actionLabel={imageData ? "Update prepared drawing" : "Prepare drawing"}
-      />
+      <CanvasBoard key={boardKey} ref={canvasRef} />
 
       <div>
         <p className="text-sm text-slate-300">Anonymous note (optional)</p>
@@ -78,26 +66,17 @@ export default function DrawClient({ slug, displayName }: Props) {
         />
       </div>
 
-      <div className="flex flex-wrap items-center gap-3">
-        <Button
-          type="button"
-          disabled={!imageData || submitting}
-          onClick={submit}
-          className="w-full md:w-auto"
-        >
-          {submitting ? "Sending..." : "Send drawing"}
-        </Button>
-        <p className="text-sm text-slate-400">
-          {imageData
-            ? "Your latest drawing is ready to send."
-            : "Use the canvas button first to prepare your drawing."}
-        </p>
-      </div>
+      <Button
+        type="button"
+        disabled={submitting}
+        onClick={submit}
+        className="w-full md:w-auto"
+      >
+        {submitting ? "Sending..." : "Send drawing"}
+      </Button>
 
-      {/* Error */}
       {error ? <p className="text-sm text-rose-300">{error}</p> : null}
 
-      {/* Animated success card */}
       <AnimatePresence>
         {submitted && (
           <motion.div
