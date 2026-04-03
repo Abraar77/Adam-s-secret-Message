@@ -1,4 +1,3 @@
-import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import {
   createOwnerToken,
@@ -47,43 +46,22 @@ export async function POST(req: NextRequest) {
     const data = createSchema.parse(body);
 
     const displayName = data.displayName;
-    const baseSlug = slugifyDisplayName(displayName);
-    let ownerToken = "";
-    let profile: { displayName: string; slug: string } | null = null;
+    const slug = withSlugSuffix(slugifyDisplayName(displayName));
+    const ownerToken = createOwnerToken();
+    const ownerTokenHash = hashOwnerToken(ownerToken);
 
-    for (let attempt = 0; attempt < 8; attempt += 1) {
-      const slug = attempt === 0 ? baseSlug : withSlugSuffix(baseSlug);
-      ownerToken = createOwnerToken();
-      const ownerTokenHash = hashOwnerToken(ownerToken);
-
-      try {
-        profile = await prisma.profile.create({
-          data: {
-            id: uuid(),
-            displayName,
-            slug,
-            ownerTokenHash,
-          },
-          select: {
-            displayName: true,
-            slug: true,
-          },
-        });
-        break;
-      } catch (error) {
-        if (
-          error instanceof Prisma.PrismaClientKnownRequestError &&
-          error.code === "P2002"
-        ) {
-          continue;
-        }
-        throw error;
-      }
-    }
-
-    if (!profile) {
-      throw new Error("Could not create a unique link. Please try again.");
-    }
+    const profile = await prisma.profile.create({
+      data: {
+        id: uuid(),
+        displayName,
+        slug,
+        ownerTokenHash,
+      },
+      select: {
+        displayName: true,
+        slug: true,
+      },
+    });
 
     const origin = getRequestOrigin(req.url);
 

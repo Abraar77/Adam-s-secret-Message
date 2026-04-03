@@ -48,7 +48,12 @@ export function SignupPanel() {
         },
         body: JSON.stringify({ displayName }),
       });
+      
 
+      const contentType = response.headers.get("content-type") ?? "";
+      if (!contentType.includes("application/json")) {
+        throw new Error(`Server error (${response.status}). Please try again.`);
+      }
       const json = (await response.json()) as SignupResult & { error?: string };
       if (!response.ok) {
         throw new Error(json.error || "Failed to create your links.");
