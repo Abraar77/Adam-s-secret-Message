@@ -8,5 +8,8 @@ export function cn(...inputs: ClassValue[]) {
 
 export function formatDate(date: Date | string) {
   const d = typeof date === "string" ? new Date(date) : date;
-  return format(d, "d MMM, h:mm a");
+  return format(
+    new Date(d.toLocaleString("en-US", { timeZone: "Asia/Kolkata" })),
+    "d MMM, h:mm a"
+  );
 }

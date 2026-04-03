@@ -23,6 +23,16 @@ export default async function DrawPage({
 
   return (
     <main className="mx-auto flex max-w-6xl flex-col gap-6 px-6 py-10 sm:px-10 lg:py-16">
+      <div className="flex justify-center">
+        <Link
+          href="/"
+          className="rounded-2xl border border-sky-400/30 bg-sky-900/20 px-8 py-5 text-center transition hover:bg-sky-900/40"
+        >
+          <p className="text-lg font-semibold text-sky-300">Create your own drawing link →</p>
+          <p className="mt-1 text-sm text-slate-400">Get your own page and receive drawings from anyone.</p>
+        </Link>
+      </div>
+
       <Card className="border-white/15 bg-slate-950/65 p-6 sm:p-8">
         <p className="text-sm uppercase tracking-[0.24em] text-sky-300">
           Public Drawing Page
@@ -60,16 +70,6 @@ export default async function DrawPage({
             visible on this page.
           </div>
         </Card>
-      </div>
-
-      <div className="flex justify-center">
-        <Link
-          href="/"
-          className="rounded-2xl border border-sky-400/30 bg-sky-900/20 px-8 py-5 text-center transition hover:bg-sky-900/40"
-        >
-          <p className="text-lg font-semibold text-sky-300">Create your own drawing link →</p>
-          <p className="mt-1 text-sm text-slate-400">Get your own page and receive drawings from anyone.</p>
-        </Link>
       </div>
     </main>
   );
