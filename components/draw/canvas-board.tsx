@@ -25,11 +25,6 @@ const COLOR_SWATCHES = [
   "#fbbf24",
 ];
 
-const SIZE_PRESETS = [
-  { label: "S", value: 4 },
-  { label: "M", value: 8 },
-  { label: "L", value: 16 },
-] as const;
 
 const BODY_STAMPS = [
   { id: "wig", label: "Wig" },
@@ -272,33 +267,20 @@ export const CanvasBoard = forwardRef<CanvasBoardHandle, CanvasBoardProps>(funct
   return (
     <div className="grid min-w-0 gap-4 xl:grid-cols-[minmax(0,1fr)_320px] xl:items-start">
       {/* ── Canvas ── */}
-      <div ref={containerRef} className="order-1 relative w-full min-w-0 overflow-hidden rounded-2xl border border-white/10 bg-white/5 shadow-inner">
-        {/* Canvas toolbar overlay */}
-        <div className="absolute top-2 left-2 right-2 z-10 flex items-center justify-between gap-2">
-          {/* Undo / Redo / Size */}
-          <div className="flex items-center gap-1 rounded-xl border border-white/10 bg-slate-900/80 px-2 py-1 backdrop-blur-sm">
-            <button type="button" aria-label="Undo" onClick={undo}
-              className="rounded-lg p-1.5 text-slate-300 hover:bg-white/10 transition">
-              <RotateCcw size={13} />
-            </button>
-            <button type="button" aria-label="Redo" onClick={redo}
-              className="rounded-lg p-1.5 text-slate-300 hover:bg-white/10 transition">
-              <RotateCw size={13} />
-            </button>
-            <div className="mx-1 h-4 w-px bg-white/10" />
-            {SIZE_PRESETS.map((preset) => (
-              <button key={preset.label} type="button"
-                onClick={() => setSize(preset.value)}
-                className={cn(
-                  "rounded-lg px-2 py-1 text-xs font-medium transition",
-                  size === preset.value ? "bg-sky-400/20 text-sky-200" : "text-slate-400 hover:bg-white/10"
-                )}>
-                {preset.label}
-              </button>
-            ))}
-          </div>
-          {/* Zoom */}
-          <div className="flex items-center gap-1 rounded-xl border border-white/10 bg-slate-900/80 px-2 py-1 backdrop-blur-sm">
+      <div className="order-1 flex min-w-0 flex-col gap-2">
+        {/* Size slider — above the canvas */}
+        <div className="flex items-center gap-3 rounded-xl border border-white/10 bg-slate-950/60 px-4 py-2">
+          <span className="text-xs text-slate-400">Size</span>
+          <input type="range" min={2} max={40} value={size}
+            onChange={(e) => setSize(Number(e.target.value))}
+            className="flex-1 accent-sky-400" />
+          <span className="w-8 text-right text-xs text-slate-300">{size}px</span>
+        </div>
+
+        {/* Canvas box */}
+        <div ref={containerRef} className="relative w-full min-w-0 overflow-hidden rounded-2xl border border-white/10 bg-white/5 shadow-inner">
+          {/* Zoom overlay */}
+          <div className="absolute top-2 right-2 z-10 flex items-center gap-1 rounded-xl border border-white/10 bg-slate-900/80 px-2 py-1 backdrop-blur-sm">
             <button type="button" aria-label="Zoom out" onClick={() => zoomAround(vpRef.current.zoom / 1.3, width / 2, canvasHeight / 2)}
               className="rounded-lg p-1.5 text-slate-300 hover:bg-white/10 transition">
               <Minus size={13} />
@@ -315,7 +297,6 @@ export const CanvasBoard = forwardRef<CanvasBoardHandle, CanvasBoardProps>(funct
               </button>
             )}
           </div>
-        </div>
         <Stage
           width={Math.max(width, 1)}
           height={canvasHeight}
@@ -353,7 +334,8 @@ export const CanvasBoard = forwardRef<CanvasBoardHandle, CanvasBoardProps>(funct
             )}
           </Layer>
         </Stage>
-      </div>
+        </div>{/* end canvas box */}
+      </div>{/* end order-1 wrapper */}
 
       {/* ── Toolbox ── */}
       <div className="order-2 space-y-4 rounded-3xl border border-white/10 bg-slate-950/55 p-4 xl:sticky xl:top-6">
@@ -458,39 +440,6 @@ export const CanvasBoard = forwardRef<CanvasBoardHandle, CanvasBoardProps>(funct
                 className="h-7 w-9 cursor-pointer rounded border-none bg-transparent"
               />
             </label>
-          </div>
-        </div>
-
-        {/* Size */}
-        <div className="space-y-2">
-          <p className="text-xs uppercase tracking-[0.22em] text-slate-400">Size</p>
-          <div className="flex gap-1.5">
-            {SIZE_PRESETS.map((preset) => (
-              <button
-                key={preset.label}
-                type="button"
-                className={cn(
-                  "rounded-full border px-3 py-1.5 text-xs font-medium transition",
-                  size === preset.value
-                    ? "border-sky-300 bg-sky-400/20 text-white"
-                    : "border-white/10 bg-white/5 text-slate-200 hover:bg-white/10"
-                )}
-                onClick={() => setSize(preset.value)}
-              >
-                {preset.label}
-              </button>
-            ))}
-          </div>
-          <div className="flex items-center gap-3 rounded-full border border-white/10 bg-white/5 px-4 py-2 text-sm text-slate-200">
-            <input
-              type="range"
-              min={4}
-              max={24}
-              value={size}
-              onChange={(e) => setSize(Number(e.target.value))}
-              className="flex-1"
-            />
-            <span className="min-w-[36px] text-xs text-slate-300">{size}px</span>
           </div>
         </div>
 
