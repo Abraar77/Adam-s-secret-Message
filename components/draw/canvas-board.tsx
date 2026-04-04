@@ -1,6 +1,5 @@
 "use client";
 
-import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { Arc, Circle, Ellipse, Group, Layer, Line, Rect, Stage } from "react-konva";
 import { forwardRef, useEffect, useImperativeHandle, useRef, useState } from "react";
@@ -277,6 +276,24 @@ export const CanvasBoard = forwardRef<CanvasBoardHandle, CanvasBoardProps>(funct
           <span className="w-8 text-right text-xs text-slate-300">{size}px</span>
         </div>
 
+        {/* Undo / Redo bar — below size slider, above canvas */}
+        <div className="flex items-center gap-1 rounded-xl border border-white/10 bg-slate-950/60 px-3 py-1.5">
+          <button type="button" aria-label="Undo" onClick={undo}
+            className="flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs text-slate-300 hover:bg-white/10 transition">
+            <RotateCcw size={13} /> Undo
+          </button>
+          <button type="button" aria-label="Redo" onClick={redo}
+            className="flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs text-slate-300 hover:bg-white/10 transition">
+            <RotateCw size={13} /> Redo
+          </button>
+          <div className="ml-auto">
+            <button type="button" aria-label="Clear canvas" onClick={clear}
+              className="flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs text-rose-400 hover:bg-rose-400/10 transition">
+              <Trash2 size={13} /> Clear
+            </button>
+          </div>
+        </div>
+
         {/* Canvas box */}
         <div ref={containerRef} className="relative w-full min-w-0 overflow-hidden rounded-2xl border border-white/10 bg-white/5 shadow-inner">
           {/* Zoom overlay */}
@@ -441,19 +458,6 @@ export const CanvasBoard = forwardRef<CanvasBoardHandle, CanvasBoardProps>(funct
               />
             </label>
           </div>
-        </div>
-
-        {/* Actions */}
-        <div className="flex flex-wrap items-center gap-2">
-          <Button type="button" variant="ghost" size="sm" onClick={undo} aria-label="Undo">
-            <RotateCcw size={14} />
-          </Button>
-          <Button type="button" variant="ghost" size="sm" onClick={redo} aria-label="Redo">
-            <RotateCw size={14} />
-          </Button>
-          <Button type="button" variant="ghost" size="sm" onClick={clear} aria-label="Clear">
-            <Trash2 size={14} />
-          </Button>
         </div>
 
       </div>
