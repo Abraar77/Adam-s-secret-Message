@@ -4,8 +4,9 @@ import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { Arc, Circle, Ellipse, Group, Layer, Line, Rect, Stage } from "react-konva";
 import { forwardRef, useEffect, useImperativeHandle, useRef, useState } from "react";
-import { Eraser, RotateCcw, RotateCw, Trash2 } from "lucide-react";
+import { Eraser, Minus, Plus, RotateCcw, RotateCw, Trash2 } from "lucide-react";
 import type { Stage as StageType } from "konva/lib/Stage";
+import type { KonvaEventObject } from "konva/lib/Node";
 
 const BACKGROUND_COLOR = "#0f172a";
 
@@ -96,6 +97,9 @@ export const CanvasBoard = forwardRef<CanvasBoardHandle, CanvasBoardProps>(funct
   const [elements, setElements] = useState<CanvasElement[]>([]);
   const [, setRedoStack] = useState<CanvasElement[]>([]);
   const [isDrawing, setIsDrawing] = useState(false);
+  const [zoom, setZoom] = useState(1);
+  const [stagePos, setStagePos] = useState({ x: 0, y: 0 });
+  const lastDist = useRef(0);
   const stageRef = useRef<StageType | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const [width, setWidth] = useState(0);
@@ -112,8 +116,59 @@ export const CanvasBoard = forwardRef<CanvasBoardHandle, CanvasBoardProps>(funct
   const canvasHeight =
     width > 0 ? (width < 420 ? 280 : width < 640 ? 320 : height) : height;
 
-  const handlePointerDown = () => {
-    const position = stageRef.current?.getPointerPosition();
+  const SCALE_BY = 1.08;
+  const MIN_ZOOM = 0.5;
+  const MAX_ZOOM = 5;
+
+  const applyZoom = (newZoom: number, anchorX: number, anchorY: number) => {
+    const clamped = Math.min(Math.max(newZoom, MIN_ZOOM), MAX_ZOOM);
+    setStagePos((pos) => ({
+      x: anchorX - (anchorX - pos.x) * (clamped / zoom),
+      y: anchorY - (anchorY - pos.y) * (clamped / zoom),
+    }));
+    setZoom(clamped);
+  };
+
+  const handleWheel = (e: KonvaEventObject<WheelEvent>) => {
+    e.evt.preventDefault();
+    const stage = stageRef.current;
+    if (!stage) return;
+    const pointer = stage.getPointerPosition();
+    if (!pointer) return;
+    const newZoom = e.evt.deltaY < 0 ? zoom * SCALE_BY : zoom / SCALE_BY;
+    applyZoom(newZoom, pointer.x, pointer.y);
+  };
+
+  const handleTouchMove = (e: KonvaEventObject<TouchEvent>) => {
+    const touches = e.evt.touches;
+    if (touches.length === 2) {
+      e.evt.preventDefault();
+      const dx = touches[0].clientX - touches[1].clientX;
+      const dy = touches[0].clientY - touches[1].clientY;
+      const dist = Math.hypot(dx, dy);
+      if (lastDist.current > 0) {
+        const stage = stageRef.current;
+        const cx = (touches[0].clientX + touches[1].clientX) / 2;
+        const cy = (touches[0].clientY + touches[1].clientY) / 2;
+        const rect = stage?.container().getBoundingClientRect();
+        const anchorX = cx - (rect?.left ?? 0);
+        const anchorY = cy - (rect?.top ?? 0);
+        applyZoom(zoom * (dist / lastDist.current), anchorX, anchorY);
+      }
+      lastDist.current = dist;
+    } else {
+      handlePointerMove();
+    }
+  };
+
+  const handleTouchEnd = () => {
+    lastDist.current = 0;
+    endDrawing();
+  };
+
+  const handlePointerDown = (e: KonvaEventObject<PointerEvent>) => {
+    if (e.evt.pointerType === "touch" && (e.evt as unknown as { touches?: TouchList }).touches?.length === 2) return;
+    const position = stageRef.current?.getRelativePointerPosition();
     if (!position) return;
 
     if (tool === "pen" || tool === "eraser") {
@@ -143,7 +198,7 @@ export const CanvasBoard = forwardRef<CanvasBoardHandle, CanvasBoardProps>(funct
 
   const handlePointerMove = () => {
     if (!isDrawing) return;
-    const point = stageRef.current?.getPointerPosition();
+    const point = stageRef.current?.getRelativePointerPosition();
     if (!point) return;
 
     setElements((previous) => {
@@ -212,10 +267,17 @@ export const CanvasBoard = forwardRef<CanvasBoardHandle, CanvasBoardProps>(funct
           height={canvasHeight}
           ref={stageRef}
           className="touch-none"
+          scaleX={zoom}
+          scaleY={zoom}
+          x={stagePos.x}
+          y={stagePos.y}
+          onWheel={handleWheel}
           onPointerDown={handlePointerDown}
           onPointerMove={handlePointerMove}
           onPointerUp={endDrawing}
           onPointerLeave={endDrawing}
+          onTouchMove={handleTouchMove}
+          onTouchEnd={handleTouchEnd}
         >
           <Layer>
             <Rect width={Math.max(width, 1)} height={canvasHeight} fill={BACKGROUND_COLOR} />
@@ -388,6 +450,28 @@ export const CanvasBoard = forwardRef<CanvasBoardHandle, CanvasBoardProps>(funct
           <Button type="button" variant="ghost" size="sm" onClick={clear} aria-label="Clear">
             <Trash2 size={14} />
           </Button>
+        </div>
+
+        {/* Zoom */}
+        <div>
+          <p className="text-xs uppercase tracking-[0.22em] text-slate-400">Zoom</p>
+          <div className="mt-2 flex items-center gap-2">
+            <Button type="button" variant="ghost" size="sm" aria-label="Zoom out"
+              onClick={() => applyZoom(zoom / SCALE_BY, width / 2, canvasHeight / 2)}>
+              <Minus size={14} />
+            </Button>
+            <span className="min-w-[44px] text-center text-xs text-slate-300">
+              {Math.round(zoom * 100)}%
+            </span>
+            <Button type="button" variant="ghost" size="sm" aria-label="Zoom in"
+              onClick={() => applyZoom(zoom * SCALE_BY, width / 2, canvasHeight / 2)}>
+              <Plus size={14} />
+            </Button>
+            <Button type="button" variant="ghost" size="sm" className="text-xs text-slate-400"
+              onClick={() => { setZoom(1); setStagePos({ x: 0, y: 0 }); }}>
+              Reset
+            </Button>
+          </div>
         </div>
       </div>
     </div>
