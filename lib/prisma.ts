@@ -6,7 +6,7 @@ const globalForPrisma = globalThis as unknown as { prisma?: PrismaClient };
 
 function createPrismaClient() {
   const pool = new Pool({
-    connectionString: process.env.DIRECT_URL ?? process.env.DATABASE_URL!,
+    connectionString: process.env.DATABASE_URL!,
     ssl: { rejectUnauthorized: false },
     max: 1,
     idleTimeoutMillis: 10_000,
