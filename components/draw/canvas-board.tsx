@@ -97,9 +97,9 @@ export const CanvasBoard = forwardRef<CanvasBoardHandle, CanvasBoardProps>(funct
   const [elements, setElements] = useState<CanvasElement[]>([]);
   const [, setRedoStack] = useState<CanvasElement[]>([]);
   const [isDrawing, setIsDrawing] = useState(false);
-  const [zoom, setZoom] = useState(1);
-  const [stagePos, setStagePos] = useState({ x: 0, y: 0 });
-  const lastDist = useRef(0);
+  const [viewport, setViewport] = useState({ zoom: 1, x: 0, y: 0 });
+  const vpRef = useRef({ zoom: 1, x: 0, y: 0 });
+  const lastTouches = useRef<{ x: number; y: number }[]>([]);
   const stageRef = useRef<StageType | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const [width, setWidth] = useState(0);
@@ -116,58 +116,70 @@ export const CanvasBoard = forwardRef<CanvasBoardHandle, CanvasBoardProps>(funct
   const canvasHeight =
     width > 0 ? (width < 420 ? 280 : width < 640 ? 320 : height) : height;
 
-  const SCALE_BY = 1.08;
   const MIN_ZOOM = 0.5;
   const MAX_ZOOM = 5;
 
-  const applyZoom = (newZoom: number, anchorX: number, anchorY: number) => {
+  const zoomAround = (newZoom: number, screenX: number, screenY: number) => {
+    const vp = vpRef.current;
     const clamped = Math.min(Math.max(newZoom, MIN_ZOOM), MAX_ZOOM);
-    setStagePos((pos) => ({
-      x: anchorX - (anchorX - pos.x) * (clamped / zoom),
-      y: anchorY - (anchorY - pos.y) * (clamped / zoom),
-    }));
-    setZoom(clamped);
+    const ratio = clamped / vp.zoom;
+    const next = { zoom: clamped, x: screenX - ratio * (screenX - vp.x), y: screenY - ratio * (screenY - vp.y) };
+    vpRef.current = next;
+    setViewport(next);
+  };
+
+  const resetViewport = () => {
+    const next = { zoom: 1, x: 0, y: 0 };
+    vpRef.current = next;
+    setViewport(next);
   };
 
   const handleWheel = (e: KonvaEventObject<WheelEvent>) => {
     e.evt.preventDefault();
-    const stage = stageRef.current;
-    if (!stage) return;
-    const pointer = stage.getPointerPosition();
+    const pointer = stageRef.current?.getPointerPosition();
     if (!pointer) return;
-    const newZoom = e.evt.deltaY < 0 ? zoom * SCALE_BY : zoom / SCALE_BY;
-    applyZoom(newZoom, pointer.x, pointer.y);
+    const factor = e.evt.deltaY < 0 ? 1.1 : 1 / 1.1;
+    zoomAround(vpRef.current.zoom * factor, pointer.x, pointer.y);
+  };
+
+  const handleTouchStart = (e: KonvaEventObject<TouchEvent>) => {
+    if (e.evt.touches.length === 2) {
+      lastTouches.current = [
+        { x: e.evt.touches[0].clientX, y: e.evt.touches[0].clientY },
+        { x: e.evt.touches[1].clientX, y: e.evt.touches[1].clientY },
+      ];
+    }
   };
 
   const handleTouchMove = (e: KonvaEventObject<TouchEvent>) => {
-    const touches = e.evt.touches;
-    if (touches.length === 2) {
+    if (e.evt.touches.length === 2) {
       e.evt.preventDefault();
-      const dx = touches[0].clientX - touches[1].clientX;
-      const dy = touches[0].clientY - touches[1].clientY;
-      const dist = Math.hypot(dx, dy);
-      if (lastDist.current > 0) {
-        const stage = stageRef.current;
-        const cx = (touches[0].clientX + touches[1].clientX) / 2;
-        const cy = (touches[0].clientY + touches[1].clientY) / 2;
-        const rect = stage?.container().getBoundingClientRect();
-        const anchorX = cx - (rect?.left ?? 0);
-        const anchorY = cy - (rect?.top ?? 0);
-        applyZoom(zoom * (dist / lastDist.current), anchorX, anchorY);
+      const t0 = e.evt.touches[0];
+      const t1 = e.evt.touches[1];
+      const prev = lastTouches.current;
+      if (prev.length === 2) {
+        const oldDist = Math.hypot(prev[0].x - prev[1].x, prev[0].y - prev[1].y);
+        const newDist = Math.hypot(t0.clientX - t1.clientX, t0.clientY - t1.clientY);
+        if (oldDist > 0) {
+          const rect = stageRef.current?.container().getBoundingClientRect();
+          const anchorX = (t0.clientX + t1.clientX) / 2 - (rect?.left ?? 0);
+          const anchorY = (t0.clientY + t1.clientY) / 2 - (rect?.top ?? 0);
+          zoomAround(vpRef.current.zoom * (newDist / oldDist), anchorX, anchorY);
+        }
       }
-      lastDist.current = dist;
+      lastTouches.current = [{ x: t0.clientX, y: t0.clientY }, { x: t1.clientX, y: t1.clientY }];
     } else {
       handlePointerMove();
     }
   };
 
   const handleTouchEnd = () => {
-    lastDist.current = 0;
+    lastTouches.current = [];
     endDrawing();
   };
 
-  const handlePointerDown = (e: KonvaEventObject<PointerEvent>) => {
-    if (e.evt.pointerType === "touch" && (e.evt as unknown as { touches?: TouchList }).touches?.length === 2) return;
+  const handlePointerDown = (_e: KonvaEventObject<PointerEvent>) => {
+    if (lastTouches.current.length >= 2) return;
     const position = stageRef.current?.getRelativePointerPosition();
     if (!position) return;
 
@@ -243,11 +255,13 @@ export const CanvasBoard = forwardRef<CanvasBoardHandle, CanvasBoardProps>(funct
   const exportImage = (): string | null => {
     const stage = stageRef.current;
     if (!stage) return null;
-    const webpDataUrl = stage.toDataURL({
-      pixelRatio: 1.5,
-      mimeType: "image/webp",
-      quality: 0.92,
-    });
+    // Reset transform so export always captures the full canvas at 1:1
+    stage.scale({ x: 1, y: 1 });
+    stage.position({ x: 0, y: 0 });
+    const webpDataUrl = stage.toDataURL({ pixelRatio: 1.5, mimeType: "image/webp", quality: 0.92 });
+    // Restore viewport
+    stage.scale({ x: vpRef.current.zoom, y: vpRef.current.zoom });
+    stage.position({ x: vpRef.current.x, y: vpRef.current.y });
     return webpDataUrl.startsWith("data:image/webp")
       ? webpDataUrl
       : stage.toDataURL({ pixelRatio: 1.5 });
@@ -258,24 +272,40 @@ export const CanvasBoard = forwardRef<CanvasBoardHandle, CanvasBoardProps>(funct
   return (
     <div className="grid min-w-0 gap-4 xl:grid-cols-[minmax(0,1fr)_320px] xl:items-start">
       {/* ── Canvas ── */}
-      <div
-        ref={containerRef}
-        className="order-1 w-full min-w-0 overflow-hidden rounded-2xl border border-white/10 bg-white/5 shadow-inner"
-      >
+      <div ref={containerRef} className="order-1 relative w-full min-w-0 overflow-hidden rounded-2xl border border-white/10 bg-white/5 shadow-inner">
+        {/* Zoom overlay */}
+        <div className="absolute top-2 right-2 z-10 flex items-center gap-1 rounded-xl border border-white/10 bg-slate-900/80 px-2 py-1 backdrop-blur-sm">
+          <button type="button" aria-label="Zoom out" onClick={() => zoomAround(vpRef.current.zoom / 1.3, width / 2, canvasHeight / 2)}
+            className="rounded-lg p-1.5 text-slate-300 hover:bg-white/10 transition">
+            <Minus size={13} />
+          </button>
+          <span className="min-w-9 text-center text-xs text-slate-300">{Math.round(viewport.zoom * 100)}%</span>
+          <button type="button" aria-label="Zoom in" onClick={() => zoomAround(vpRef.current.zoom * 1.3, width / 2, canvasHeight / 2)}
+            className="rounded-lg p-1.5 text-slate-300 hover:bg-white/10 transition">
+            <Plus size={13} />
+          </button>
+          {viewport.zoom !== 1 && (
+            <button type="button" onClick={resetViewport}
+              className="rounded-lg px-2 py-1 text-xs text-slate-400 hover:bg-white/10 transition">
+              Reset
+            </button>
+          )}
+        </div>
         <Stage
           width={Math.max(width, 1)}
           height={canvasHeight}
           ref={stageRef}
           className="touch-none"
-          scaleX={zoom}
-          scaleY={zoom}
-          x={stagePos.x}
-          y={stagePos.y}
+          scaleX={viewport.zoom}
+          scaleY={viewport.zoom}
+          x={viewport.x}
+          y={viewport.y}
           onWheel={handleWheel}
           onPointerDown={handlePointerDown}
           onPointerMove={handlePointerMove}
           onPointerUp={endDrawing}
           onPointerLeave={endDrawing}
+          onTouchStart={handleTouchStart}
           onTouchMove={handleTouchMove}
           onTouchEnd={handleTouchEnd}
         >
@@ -452,27 +482,6 @@ export const CanvasBoard = forwardRef<CanvasBoardHandle, CanvasBoardProps>(funct
           </Button>
         </div>
 
-        {/* Zoom */}
-        <div>
-          <p className="text-xs uppercase tracking-[0.22em] text-slate-400">Zoom</p>
-          <div className="mt-2 flex items-center gap-2">
-            <Button type="button" variant="ghost" size="sm" aria-label="Zoom out"
-              onClick={() => applyZoom(zoom / SCALE_BY, width / 2, canvasHeight / 2)}>
-              <Minus size={14} />
-            </Button>
-            <span className="min-w-[44px] text-center text-xs text-slate-300">
-              {Math.round(zoom * 100)}%
-            </span>
-            <Button type="button" variant="ghost" size="sm" aria-label="Zoom in"
-              onClick={() => applyZoom(zoom * SCALE_BY, width / 2, canvasHeight / 2)}>
-              <Plus size={14} />
-            </Button>
-            <Button type="button" variant="ghost" size="sm" className="text-xs text-slate-400"
-              onClick={() => { setZoom(1); setStagePos({ x: 0, y: 0 }); }}>
-              Reset
-            </Button>
-          </div>
-        </div>
       </div>
     </div>
   );
