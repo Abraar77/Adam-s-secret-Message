@@ -273,23 +273,48 @@ export const CanvasBoard = forwardRef<CanvasBoardHandle, CanvasBoardProps>(funct
     <div className="grid min-w-0 gap-4 xl:grid-cols-[minmax(0,1fr)_320px] xl:items-start">
       {/* ── Canvas ── */}
       <div ref={containerRef} className="order-1 relative w-full min-w-0 overflow-hidden rounded-2xl border border-white/10 bg-white/5 shadow-inner">
-        {/* Zoom overlay */}
-        <div className="absolute top-2 right-2 z-10 flex items-center gap-1 rounded-xl border border-white/10 bg-slate-900/80 px-2 py-1 backdrop-blur-sm">
-          <button type="button" aria-label="Zoom out" onClick={() => zoomAround(vpRef.current.zoom / 1.3, width / 2, canvasHeight / 2)}
-            className="rounded-lg p-1.5 text-slate-300 hover:bg-white/10 transition">
-            <Minus size={13} />
-          </button>
-          <span className="min-w-9 text-center text-xs text-slate-300">{Math.round(viewport.zoom * 100)}%</span>
-          <button type="button" aria-label="Zoom in" onClick={() => zoomAround(vpRef.current.zoom * 1.3, width / 2, canvasHeight / 2)}
-            className="rounded-lg p-1.5 text-slate-300 hover:bg-white/10 transition">
-            <Plus size={13} />
-          </button>
-          {viewport.zoom !== 1 && (
-            <button type="button" onClick={resetViewport}
-              className="rounded-lg px-2 py-1 text-xs text-slate-400 hover:bg-white/10 transition">
-              Reset
+        {/* Canvas toolbar overlay */}
+        <div className="absolute top-2 left-2 right-2 z-10 flex items-center justify-between gap-2">
+          {/* Undo / Redo / Size */}
+          <div className="flex items-center gap-1 rounded-xl border border-white/10 bg-slate-900/80 px-2 py-1 backdrop-blur-sm">
+            <button type="button" aria-label="Undo" onClick={undo}
+              className="rounded-lg p-1.5 text-slate-300 hover:bg-white/10 transition">
+              <RotateCcw size={13} />
             </button>
-          )}
+            <button type="button" aria-label="Redo" onClick={redo}
+              className="rounded-lg p-1.5 text-slate-300 hover:bg-white/10 transition">
+              <RotateCw size={13} />
+            </button>
+            <div className="mx-1 h-4 w-px bg-white/10" />
+            {SIZE_PRESETS.map((preset) => (
+              <button key={preset.label} type="button"
+                onClick={() => setSize(preset.value)}
+                className={cn(
+                  "rounded-lg px-2 py-1 text-xs font-medium transition",
+                  size === preset.value ? "bg-sky-400/20 text-sky-200" : "text-slate-400 hover:bg-white/10"
+                )}>
+                {preset.label}
+              </button>
+            ))}
+          </div>
+          {/* Zoom */}
+          <div className="flex items-center gap-1 rounded-xl border border-white/10 bg-slate-900/80 px-2 py-1 backdrop-blur-sm">
+            <button type="button" aria-label="Zoom out" onClick={() => zoomAround(vpRef.current.zoom / 1.3, width / 2, canvasHeight / 2)}
+              className="rounded-lg p-1.5 text-slate-300 hover:bg-white/10 transition">
+              <Minus size={13} />
+            </button>
+            <span className="min-w-9 text-center text-xs text-slate-300">{Math.round(viewport.zoom * 100)}%</span>
+            <button type="button" aria-label="Zoom in" onClick={() => zoomAround(vpRef.current.zoom * 1.3, width / 2, canvasHeight / 2)}
+              className="rounded-lg p-1.5 text-slate-300 hover:bg-white/10 transition">
+              <Plus size={13} />
+            </button>
+            {viewport.zoom !== 1 && (
+              <button type="button" onClick={resetViewport}
+                className="rounded-lg px-2 py-1 text-xs text-slate-400 hover:bg-white/10 transition">
+                Reset
+              </button>
+            )}
+          </div>
         </div>
         <Stage
           width={Math.max(width, 1)}
