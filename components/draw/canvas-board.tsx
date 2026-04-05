@@ -1,101 +1,314 @@
 "use client";
 
 import { cn } from "@/lib/utils";
-import { Arc, Circle, Ellipse, Group, Layer, Line, Rect, Stage } from "react-konva";
+import {
+  Arrow as KonvaArrow,
+  Arc, Circle, Ellipse, Group, Layer, Line, Rect, Shape, Stage,
+} from "react-konva";
 import { forwardRef, useEffect, useImperativeHandle, useRef, useState } from "react";
-import { Eraser, Minus, Plus, RotateCcw, RotateCw, Trash2 } from "lucide-react";
+import {
+  ArrowRight,
+  Circle as CircleIcon,
+  Eraser,
+  Minus,
+  MoreHorizontal,
+  Pen,
+  Plus,
+  RotateCcw,
+  RotateCw,
+  Sparkles,
+  Square,
+  Trash2,
+  Triangle as TriangleIcon,
+} from "lucide-react";
 import type { Stage as StageType } from "konva/lib/Stage";
 import type { KonvaEventObject } from "konva/lib/Node";
 
 const BACKGROUND_COLOR = "#0f172a";
 
 const COLOR_SWATCHES = [
-  "#f8fafc",
-  "#f472b6",
-  "#fb7185",
-  "#f97316",
-  "#facc15",
-  "#84cc16",
-  "#2dd4bf",
-  "#38bdf8",
-  "#818cf8",
-  "#a78bfa",
-  "#f59e0b",
-  "#fbbf24",
+  "#f8fafc", "#f472b6", "#fb7185", "#f97316", "#facc15",
+  "#84cc16", "#2dd4bf", "#38bdf8", "#818cf8", "#a78bfa",
+  "#f59e0b", "#fbbf24", "#000000", "#94a3b8",
 ];
 
-
 const BODY_STAMPS = [
-  { id: "wig", label: "Wig" },
-  { id: "eye", label: "Eye" },
-  { id: "eyebrow", label: "Eyebrow" },
-  { id: "nose", label: "Nose" },
-  { id: "mouth", label: "Mouth" },
-  { id: "ear", label: "Ear" },
+  { id: "wig",        label: "Wig" },
+  { id: "eye",        label: "Eye" },
+  { id: "eyebrow",    label: "Eyebrow" },
+  { id: "nose",       label: "Nose" },
+  { id: "mouth",      label: "Mouth" },
+  { id: "ear",        label: "Ear" },
   { id: "sunglasses", label: "Sunglasses" },
-  { id: "mustache", label: "Mustache" },
-  { id: "beard", label: "Beard" },
-  { id: "arm", label: "Arm" },
-  { id: "hand", label: "Hand" },
-  { id: "leg", label: "Leg" },
-  { id: "foot", label: "Foot" },
+  { id: "mustache",   label: "Mustache" },
+  { id: "beard",      label: "Beard" },
+  { id: "arm",        label: "Arm" },
+  { id: "hand",       label: "Hand" },
+  { id: "leg",        label: "Leg" },
+  { id: "foot",       label: "Foot" },
 ] as const;
 
 const REACTION_STAMPS = [
-  { id: "heart", label: "Heart" },
-  { id: "star", label: "Star" },
-  { id: "fire", label: "Fire" },
+  { id: "heart",     label: "Heart" },
+  { id: "star",      label: "Star" },
+  { id: "fire",      label: "Fire" },
   { id: "lightning", label: "Lightning" },
-  { id: "sparkle", label: "Sparkle" },
+  { id: "sparkle",   label: "Sparkle" },
 ] as const;
 
 const STAMP_TOOLS = [...BODY_STAMPS, ...REACTION_STAMPS];
 
-type BodyStamp = (typeof BODY_STAMPS)[number]["id"];
+type BodyStamp     = (typeof BODY_STAMPS)[number]["id"];
 type ReactionStamp = (typeof REACTION_STAMPS)[number]["id"];
-type StampTool = BodyStamp | ReactionStamp;
-type Tool = "pen" | "eraser" | StampTool;
+type StampTool     = BodyStamp | ReactionStamp;
+type DrawTool      = "pen" | "dotted" | "spray" | "eraser";
+type ShapeToolType = "circle-tool" | "rect-tool" | "triangle-tool" | "line-tool" | "arrow-tool";
+type Tool          = DrawTool | ShapeToolType | StampTool;
+
+type LucideIcon = React.ComponentType<{ size?: number; className?: string }>;
+
+const DRAW_TOOLS: { id: DrawTool; label: string; Icon: LucideIcon }[] = [
+  { id: "pen",    label: "Pen",   Icon: Pen },
+  { id: "dotted", label: "Dots",  Icon: MoreHorizontal },
+  { id: "spray",  label: "Spray", Icon: Sparkles },
+  { id: "eraser", label: "Erase", Icon: Eraser },
+];
+
+const SHAPE_TOOLS: { id: ShapeToolType; label: string; Icon: LucideIcon }[] = [
+  { id: "line-tool",     label: "Line",     Icon: Minus },
+  { id: "arrow-tool",    label: "Arrow",    Icon: ArrowRight },
+  { id: "circle-tool",   label: "Circle",   Icon: CircleIcon },
+  { id: "rect-tool",     label: "Rect",     Icon: Square },
+  { id: "triangle-tool", label: "Triangle", Icon: TriangleIcon },
+];
+
+// ── Element types ─────────────────────────────────────────────────────────────
 
 interface StrokeElement {
   kind: "stroke";
   points: number[];
   color: string;
   size: number;
+  opacity: number;
+  dotted: boolean;
+}
+
+interface SprayElement {
+  kind: "spray";
+  dots: number[];
+  color: string;
+  size: number;
+  opacity: number;
 }
 
 interface StampElement {
   kind: "stamp";
   stamp: StampTool;
-  x: number;
-  y: number;
-  color: string;
-  size: number;
+  x: number; y: number;
+  color: string; size: number;
 }
 
-type CanvasElement = StrokeElement | StampElement;
-
-export interface CanvasBoardHandle {
-  exportImage: () => string | null;
+interface CircleShapeEl {
+  kind: "circle-shape";
+  x: number; y: number;
+  radiusX: number; radiusY: number;
+  color: string; size: number; opacity: number; filled: boolean;
 }
 
-interface CanvasBoardProps {
-  height?: number;
+interface RectShapeEl {
+  kind: "rect-shape";
+  x: number; y: number;
+  width: number; height: number;
+  color: string; size: number; opacity: number; filled: boolean;
 }
 
-export const CanvasBoard = forwardRef<CanvasBoardHandle, CanvasBoardProps>(function CanvasBoard({
-  height = 440,
-}, ref) {
-  const [tool, setTool] = useState<Tool>("pen");
-  const [color, setColor] = useState("#38bdf8");
-  const [size, setSize] = useState(8);
-  const [elements, setElements] = useState<CanvasElement[]>([]);
-  const [, setRedoStack] = useState<CanvasElement[]>([]);
+interface TriangleShapeEl {
+  kind: "triangle-shape";
+  pts: number[];
+  color: string; size: number; opacity: number; filled: boolean;
+}
+
+interface LineShapeEl {
+  kind: "line-shape";
+  x1: number; y1: number; x2: number; y2: number;
+  color: string; size: number; opacity: number;
+}
+
+interface ArrowShapeEl {
+  kind: "arrow-shape";
+  x1: number; y1: number; x2: number; y2: number;
+  color: string; size: number; opacity: number;
+}
+
+type ShapeEl = CircleShapeEl | RectShapeEl | TriangleShapeEl | LineShapeEl | ArrowShapeEl;
+type CanvasElement = StrokeElement | SprayElement | StampElement | ShapeEl;
+
+export interface CanvasBoardHandle { exportImage: () => string | null; }
+interface CanvasBoardProps { height?: number; }
+
+// ── Helpers ───────────────────────────────────────────────────────────────────
+
+function isShapeTool(t: Tool): t is ShapeToolType {
+  return ["circle-tool", "rect-tool", "triangle-tool", "line-tool", "arrow-tool"].includes(t);
+}
+
+function buildShape(
+  tool: ShapeToolType,
+  start: { x: number; y: number },
+  end: { x: number; y: number },
+  color: string, size: number, opacity: number, filled: boolean,
+): ShapeEl | null {
+  const MIN = 2;
+  switch (tool) {
+    case "circle-tool": {
+      const rX = Math.abs(end.x - start.x) / 2;
+      const rY = Math.abs(end.y - start.y) / 2;
+      if (rX < MIN && rY < MIN) return null;
+      return { kind: "circle-shape", x: (start.x + end.x) / 2, y: (start.y + end.y) / 2,
+        radiusX: Math.max(rX, MIN), radiusY: Math.max(rY, MIN), color, size, opacity, filled };
+    }
+    case "rect-tool": {
+      const w = Math.abs(end.x - start.x);
+      const h = Math.abs(end.y - start.y);
+      if (w < MIN && h < MIN) return null;
+      return { kind: "rect-shape", x: Math.min(start.x, end.x), y: Math.min(start.y, end.y),
+        width: Math.max(w, MIN), height: Math.max(h, MIN), color, size, opacity, filled };
+    }
+    case "triangle-tool": {
+      if (Math.hypot(end.x - start.x, end.y - start.y) < MIN * 2) return null;
+      const cx = (start.x + end.x) / 2;
+      return { kind: "triangle-shape", pts: [cx, start.y, end.x, end.y, start.x, end.y],
+        color, size, opacity, filled };
+    }
+    case "line-tool":
+      if (Math.hypot(end.x - start.x, end.y - start.y) < MIN) return null;
+      return { kind: "line-shape", x1: start.x, y1: start.y, x2: end.x, y2: end.y, color, size, opacity };
+    case "arrow-tool":
+      if (Math.hypot(end.x - start.x, end.y - start.y) < MIN) return null;
+      return { kind: "arrow-shape", x1: start.x, y1: start.y, x2: end.x, y2: end.y, color, size, opacity };
+  }
+}
+
+function generateSprayDots(cx: number, cy: number, size: number): number[] {
+  const radius = size * 5;
+  const count  = Math.max(5, Math.floor(size * 0.8));
+  const dots: number[] = [];
+  for (let i = 0; i < count; i++) {
+    const angle = Math.random() * Math.PI * 2;
+    const r = Math.sqrt(Math.random()) * radius;
+    dots.push(cx + Math.cos(angle) * r, cy + Math.sin(angle) * r);
+  }
+  return dots;
+}
+
+function appendSmoothPoint(stroke: StrokeElement, x: number, y: number): StrokeElement {
+  const pts = stroke.points;
+  if (pts.length < 2) return { ...stroke, points: pts.concat([x, y]) };
+  const lastX = pts[pts.length - 2];
+  const lastY = pts[pts.length - 1];
+  if (Math.hypot(x - lastX, y - lastY) < 0.8) return stroke;
+  const midX = (lastX + x) / 2;
+  const midY = (lastY + y) / 2;
+  return { ...stroke, points: pts.concat([midX, midY, x, y]) };
+}
+
+function renderElement(el: CanvasElement, key: string | number, alpha = 1): React.ReactNode {
+  switch (el.kind) {
+    case "stroke":
+      return (
+        <Line key={key} points={el.points}
+          stroke={el.color} strokeWidth={el.size}
+          tension={el.dotted ? 0 : 0.62} lineCap="round" lineJoin="round"
+          opacity={(el.opacity / 100) * alpha}
+          dash={el.dotted ? [0.01, el.size * 2.2] : undefined}
+        />
+      );
+    case "spray":
+      return (
+        <Shape key={key} fill={el.color} stroke="transparent"
+          opacity={(el.opacity / 100) * alpha} listening={false}
+          sceneFunc={(ctx, shape) => {
+            const r = Math.max(el.size * 0.4, 1);
+            ctx.beginPath();
+            for (let i = 0; i < el.dots.length; i += 2) {
+              ctx.moveTo(el.dots[i] + r, el.dots[i + 1]);
+              ctx.arc(el.dots[i], el.dots[i + 1], r, 0, Math.PI * 2, false);
+            }
+            ctx.closePath();
+            ctx.fillStrokeShape(shape);
+          }}
+        />
+      );
+    case "circle-shape":
+      return (
+        <Ellipse key={key} x={el.x} y={el.y}
+          radiusX={Math.max(el.radiusX, 1)} radiusY={Math.max(el.radiusY, 1)}
+          stroke={el.color} strokeWidth={el.size}
+          fill={el.filled ? el.color : undefined}
+          opacity={(el.opacity / 100) * alpha}
+        />
+      );
+    case "rect-shape":
+      return (
+        <Rect key={key} x={el.x} y={el.y}
+          width={Math.max(el.width, 1)} height={Math.max(el.height, 1)}
+          stroke={el.color} strokeWidth={el.size}
+          fill={el.filled ? el.color : undefined}
+          opacity={(el.opacity / 100) * alpha}
+        />
+      );
+    case "triangle-shape":
+      return (
+        <Line key={key} points={el.pts} closed
+          stroke={el.color} strokeWidth={el.size}
+          fill={el.filled ? el.color : undefined}
+          lineCap="round" lineJoin="round"
+          opacity={(el.opacity / 100) * alpha}
+        />
+      );
+    case "line-shape":
+      return (
+        <Line key={key} points={[el.x1, el.y1, el.x2, el.y2]}
+          stroke={el.color} strokeWidth={el.size} lineCap="round"
+          opacity={(el.opacity / 100) * alpha}
+        />
+      );
+    case "arrow-shape":
+      return (
+        <KonvaArrow key={key} points={[el.x1, el.y1, el.x2, el.y2]}
+          stroke={el.color} strokeWidth={el.size} fill={el.color}
+          pointerLength={Math.max(el.size * 3, 8)} pointerWidth={Math.max(el.size * 2.5, 6)}
+          lineCap="round" opacity={(el.opacity / 100) * alpha}
+        />
+      );
+    case "stamp":
+      return <StampNode key={key} element={el} />;
+    default:
+      return null;
+  }
+}
+
+// ── Component ─────────────────────────────────────────────────────────────────
+
+export const CanvasBoard = forwardRef<CanvasBoardHandle, CanvasBoardProps>(function CanvasBoard(
+  { height = 440 }, ref,
+) {
+  const [tool,      setTool]      = useState<Tool>("pen");
+  const [color,     setColor]     = useState("#38bdf8");
+  const [size,      setSize]      = useState(8);
+  const [opacity,   setOpacity]   = useState(100);
+  const [filled,    setFilled]    = useState(false);
+  const [elements,  setElements]  = useState<CanvasElement[]>([]);
+  const [, setRedoStack]          = useState<CanvasElement[]>([]);
   const [isDrawing, setIsDrawing] = useState(false);
-  const [viewport, setViewport] = useState({ zoom: 1, x: 0, y: 0 });
-  const vpRef = useRef({ zoom: 1, x: 0, y: 0 });
-  const lastTouches = useRef<{ x: number; y: number }[]>([]);
-  const stageRef = useRef<StageType | null>(null);
-  const containerRef = useRef<HTMLDivElement>(null);
+  const [previewEl, setPreviewEl] = useState<ShapeEl | null>(null);
+  const [viewport,  setViewport]  = useState({ zoom: 1, x: 0, y: 0 });
+
+  const vpRef         = useRef({ zoom: 1, x: 0, y: 0 });
+  const shapeStartRef = useRef<{ x: number; y: number } | null>(null);
+  const lastTouches   = useRef<{ x: number; y: number }[]>([]);
+  const stageRef      = useRef<StageType | null>(null);
+  const containerRef  = useRef<HTMLDivElement>(null);
   const [width, setWidth] = useState(0);
 
   useEffect(() => {
@@ -107,9 +320,7 @@ export const CanvasBoard = forwardRef<CanvasBoardHandle, CanvasBoardProps>(funct
     return () => observer.disconnect();
   }, []);
 
-  const canvasHeight =
-    width > 0 ? (width < 420 ? 280 : width < 640 ? 320 : height) : height;
-
+  const canvasHeight = width > 0 ? (width < 420 ? 280 : width < 640 ? 320 : height) : height;
   const MIN_ZOOM = 0.5;
   const MAX_ZOOM = 5;
 
@@ -132,8 +343,7 @@ export const CanvasBoard = forwardRef<CanvasBoardHandle, CanvasBoardProps>(funct
     e.evt.preventDefault();
     const pointer = stageRef.current?.getPointerPosition();
     if (!pointer) return;
-    const factor = e.evt.deltaY < 0 ? 1.1 : 1 / 1.1;
-    zoomAround(vpRef.current.zoom * factor, pointer.x, pointer.y);
+    zoomAround(vpRef.current.zoom * (e.evt.deltaY < 0 ? 1.1 : 1 / 1.1), pointer.x, pointer.y);
   };
 
   const handleTouchStart = (e: KonvaEventObject<TouchEvent>) => {
@@ -156,9 +366,11 @@ export const CanvasBoard = forwardRef<CanvasBoardHandle, CanvasBoardProps>(funct
         const newDist = Math.hypot(t0.clientX - t1.clientX, t0.clientY - t1.clientY);
         if (oldDist > 0) {
           const rect = stageRef.current?.container().getBoundingClientRect();
-          const anchorX = (t0.clientX + t1.clientX) / 2 - (rect?.left ?? 0);
-          const anchorY = (t0.clientY + t1.clientY) / 2 - (rect?.top ?? 0);
-          zoomAround(vpRef.current.zoom * (newDist / oldDist), anchorX, anchorY);
+          zoomAround(
+            vpRef.current.zoom * (newDist / oldDist),
+            (t0.clientX + t1.clientX) / 2 - (rect?.left ?? 0),
+            (t0.clientY + t1.clientY) / 2 - (rect?.top ?? 0),
+          );
         }
       }
       lastTouches.current = [{ x: t0.clientX, y: t0.clientY }, { x: t1.clientX, y: t1.clientY }];
@@ -167,81 +379,100 @@ export const CanvasBoard = forwardRef<CanvasBoardHandle, CanvasBoardProps>(funct
     }
   };
 
-  const handleTouchEnd = () => {
-    lastTouches.current = [];
-    endDrawing();
-  };
+  const handleTouchEnd = () => { lastTouches.current = []; endDrawing(); };
 
   const handlePointerDown = (_e: KonvaEventObject<PointerEvent>) => {
     if (lastTouches.current.length >= 2) return;
-    const position = stageRef.current?.getRelativePointerPosition();
-    if (!position) return;
+    const pos = stageRef.current?.getRelativePointerPosition();
+    if (!pos) return;
 
-    if (tool === "pen" || tool === "eraser") {
+    if (tool === "pen" || tool === "dotted" || tool === "eraser") {
       setIsDrawing(true);
       setRedoStack([]);
-      const newStroke: StrokeElement = {
+      setElements(prev => [...prev, {
         kind: "stroke",
-        color: tool === "eraser" ? BACKGROUND_COLOR : color,
-        size: tool === "eraser" ? size * 2.5 : size,
-        points: [position.x, position.y, position.x, position.y],
-      };
-      setElements((prev) => [...prev, newStroke]);
-      return;
+        color:  tool === "eraser" ? BACKGROUND_COLOR : color,
+        size:   tool === "eraser" ? size * 2.5 : size,
+        opacity: tool === "eraser" ? 100 : opacity,
+        dotted: tool === "dotted",
+        points: [pos.x, pos.y, pos.x, pos.y],
+      }]);
+    } else if (tool === "spray") {
+      setIsDrawing(true);
+      setRedoStack([]);
+      setElements(prev => [...prev, {
+        kind: "spray", color, size, opacity,
+        dots: generateSprayDots(pos.x, pos.y, size),
+      }]);
+    } else if (isShapeTool(tool)) {
+      shapeStartRef.current = pos;
+      setIsDrawing(true);
+    } else {
+      // stamp
+      setRedoStack([]);
+      setElements(prev => [...prev, {
+        kind: "stamp", stamp: tool as StampTool, x: pos.x, y: pos.y, color, size,
+      }]);
     }
-
-    const newStamp: StampElement = {
-      kind: "stamp",
-      stamp: tool,
-      x: position.x,
-      y: position.y,
-      color,
-      size,
-    };
-    setRedoStack([]);
-    setElements((prev) => [...prev, newStamp]);
   };
 
   const handlePointerMove = () => {
     if (!isDrawing) return;
-    const point = stageRef.current?.getRelativePointerPosition();
-    if (!point) return;
+    const pos = stageRef.current?.getRelativePointerPosition();
+    if (!pos) return;
 
-    setElements((previous) => {
-      const next = [...previous];
-      const last = next[next.length - 1];
-      if (!last || last.kind !== "stroke") return previous;
-      const updatedStroke = appendSmoothPoint(last, point.x, point.y);
-      if (updatedStroke === last) return previous;
-      next[next.length - 1] = updatedStroke;
-      return next;
-    });
+    if (tool === "pen" || tool === "dotted" || tool === "eraser") {
+      setElements(prev => {
+        const next = [...prev];
+        const last = next[next.length - 1];
+        if (!last || last.kind !== "stroke") return prev;
+        const updated = appendSmoothPoint(last, pos.x, pos.y);
+        if (updated === last) return prev;
+        next[next.length - 1] = updated;
+        return next;
+      });
+    } else if (tool === "spray") {
+      setElements(prev => {
+        const next = [...prev];
+        const last = next[next.length - 1];
+        if (!last || last.kind !== "spray") return prev;
+        if (last.dots.length >= 800) return prev; // cap for performance
+        next[next.length - 1] = { ...last, dots: [...last.dots, ...generateSprayDots(pos.x, pos.y, size)] };
+        return next;
+      });
+    } else if (isShapeTool(tool) && shapeStartRef.current) {
+      setPreviewEl(buildShape(tool, shapeStartRef.current, pos, color, size, opacity, filled));
+    }
   };
 
-  const endDrawing = () => setIsDrawing(false);
-
-  const clear = () => {
-    setElements([]);
-    setRedoStack([]);
+  const endDrawing = () => {
+    if (isShapeTool(tool) && shapeStartRef.current && previewEl) {
+      setElements(prev => [...prev, previewEl]);
+      setRedoStack([]);
+      setPreviewEl(null);
+    }
+    shapeStartRef.current = null;
     setIsDrawing(false);
   };
 
+  const clear = () => { setElements([]); setRedoStack([]); setIsDrawing(false); setPreviewEl(null); };
+
   const undo = () => {
-    setElements((previous) => {
-      if (!previous.length) return previous;
-      const next = [...previous];
+    setElements(prev => {
+      if (!prev.length) return prev;
+      const next = [...prev];
       const popped = next.pop();
-      if (popped) setRedoStack((current) => [...current, popped]);
+      if (popped) setRedoStack(cur => [...cur, popped]);
       return next;
     });
   };
 
   const redo = () => {
-    setRedoStack((previous) => {
-      if (!previous.length) return previous;
-      const next = [...previous];
+    setRedoStack(prev => {
+      if (!prev.length) return prev;
+      const next = [...prev];
       const restored = next.pop();
-      if (restored) setElements((current) => [...current, restored]);
+      if (restored) setElements(cur => [...cur, restored]);
       return next;
     });
   };
@@ -249,45 +480,62 @@ export const CanvasBoard = forwardRef<CanvasBoardHandle, CanvasBoardProps>(funct
   const exportImage = (): string | null => {
     const stage = stageRef.current;
     if (!stage) return null;
-    // Reset transform so export always captures the full canvas at 1:1
     stage.scale({ x: 1, y: 1 });
     stage.position({ x: 0, y: 0 });
-    const webpDataUrl = stage.toDataURL({ pixelRatio: 1.5, mimeType: "image/webp", quality: 0.92 });
-    // Restore viewport
+    const url = stage.toDataURL({ pixelRatio: 1.5, mimeType: "image/webp", quality: 0.92 });
     stage.scale({ x: vpRef.current.zoom, y: vpRef.current.zoom });
     stage.position({ x: vpRef.current.x, y: vpRef.current.y });
-    return webpDataUrl.startsWith("data:image/webp")
-      ? webpDataUrl
-      : stage.toDataURL({ pixelRatio: 1.5 });
+    return url.startsWith("data:image/webp") ? url : stage.toDataURL({ pixelRatio: 1.5 });
   };
 
   useImperativeHandle(ref, () => ({ exportImage }));
 
   return (
     <div className="grid min-w-0 gap-4 xl:grid-cols-[minmax(0,1fr)_320px] xl:items-start">
-      {/* ── Canvas ── */}
+      {/* ── Canvas column ── */}
       <div className="order-1 flex min-w-0 flex-col gap-2">
-        {/* Size slider — above the canvas */}
-        <div className="flex items-center gap-3 rounded-xl border border-white/10 bg-slate-950/60 px-4 py-2">
-          <span className="text-xs text-slate-400">Size</span>
-          <input type="range" min={2} max={40} value={size}
-            onChange={(e) => setSize(Number(e.target.value))}
-            className="flex-1 accent-sky-400" />
-          <span className="w-8 text-right text-xs text-slate-300">{size}px</span>
+
+        {/* Size + Opacity sliders */}
+        <div className="space-y-2 rounded-xl border border-white/10 bg-slate-950/60 px-4 py-3">
+          <div className="flex items-center gap-3">
+            <span className="w-14 shrink-0 text-xs text-slate-400">Size</span>
+            <input type="range" min={2} max={40} value={size}
+              onChange={(e) => setSize(Number(e.target.value))}
+              className="flex-1 accent-sky-400" />
+            <span className="w-9 shrink-0 text-right text-xs text-slate-300">{size}px</span>
+          </div>
+          <div className="flex items-center gap-3">
+            <span className="w-14 shrink-0 text-xs text-slate-400">Opacity</span>
+            <input type="range" min={10} max={100} value={opacity}
+              onChange={(e) => setOpacity(Number(e.target.value))}
+              className="flex-1 accent-violet-400" />
+            <span className="w-9 shrink-0 text-right text-xs text-slate-300">{opacity}%</span>
+          </div>
         </div>
 
-        {/* Undo / Redo bar — below size slider, above canvas */}
+        {/* Undo / Redo / Clear + Fill toggle */}
         <div className="flex items-center gap-1 rounded-xl border border-white/10 bg-slate-950/60 px-3 py-1.5">
-          <button type="button" aria-label="Undo" onClick={undo}
+          <button type="button" onClick={undo}
             className="flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs text-slate-300 hover:bg-white/10 transition">
             <RotateCcw size={13} /> Undo
           </button>
-          <button type="button" aria-label="Redo" onClick={redo}
+          <button type="button" onClick={redo}
             className="flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs text-slate-300 hover:bg-white/10 transition">
             <RotateCw size={13} /> Redo
           </button>
+          {isShapeTool(tool) && (
+            <button type="button" onClick={() => setFilled(f => !f)}
+              className={cn(
+                "flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs transition",
+                filled
+                  ? "border border-sky-500/40 bg-sky-500/20 text-sky-300"
+                  : "text-slate-400 hover:bg-white/10",
+              )}>
+              {filled ? "◼" : "◻"} Fill
+            </button>
+          )}
           <div className="ml-auto">
-            <button type="button" aria-label="Clear canvas" onClick={clear}
+            <button type="button" onClick={clear}
               className="flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs text-rose-400 hover:bg-rose-400/10 transition">
               <Trash2 size={13} /> Clear
             </button>
@@ -298,12 +546,14 @@ export const CanvasBoard = forwardRef<CanvasBoardHandle, CanvasBoardProps>(funct
         <div ref={containerRef} className="relative w-full min-w-0 overflow-hidden rounded-2xl border border-white/10 bg-white/5 shadow-inner">
           {/* Zoom overlay */}
           <div className="absolute top-2 right-2 z-10 flex items-center gap-1 rounded-xl border border-white/10 bg-slate-900/80 px-2 py-1 backdrop-blur-sm">
-            <button type="button" aria-label="Zoom out" onClick={() => zoomAround(vpRef.current.zoom / 1.3, width / 2, canvasHeight / 2)}
+            <button type="button" aria-label="Zoom out"
+              onClick={() => zoomAround(vpRef.current.zoom / 1.3, width / 2, canvasHeight / 2)}
               className="rounded-lg p-1.5 text-slate-300 hover:bg-white/10 transition">
               <Minus size={13} />
             </button>
             <span className="min-w-9 text-center text-xs text-slate-300">{Math.round(viewport.zoom * 100)}%</span>
-            <button type="button" aria-label="Zoom in" onClick={() => zoomAround(vpRef.current.zoom * 1.3, width / 2, canvasHeight / 2)}
+            <button type="button" aria-label="Zoom in"
+              onClick={() => zoomAround(vpRef.current.zoom * 1.3, width / 2, canvasHeight / 2)}
               className="rounded-lg p-1.5 text-slate-300 hover:bg-white/10 transition">
               <Plus size={13} />
             </button>
@@ -314,94 +564,89 @@ export const CanvasBoard = forwardRef<CanvasBoardHandle, CanvasBoardProps>(funct
               </button>
             )}
           </div>
-        <Stage
-          width={Math.max(width, 1)}
-          height={canvasHeight}
-          ref={stageRef}
-          className="touch-none"
-          scaleX={viewport.zoom}
-          scaleY={viewport.zoom}
-          x={viewport.x}
-          y={viewport.y}
-          onWheel={handleWheel}
-          onPointerDown={handlePointerDown}
-          onPointerMove={handlePointerMove}
-          onPointerUp={endDrawing}
-          onPointerLeave={endDrawing}
-          onTouchStart={handleTouchStart}
-          onTouchMove={handleTouchMove}
-          onTouchEnd={handleTouchEnd}
-        >
-          <Layer>
-            <Rect width={Math.max(width, 1)} height={canvasHeight} fill={BACKGROUND_COLOR} />
-            {elements.map((element, index) =>
-              element.kind === "stroke" ? (
-                <Line
-                  key={index}
-                  points={element.points}
-                  stroke={element.color}
-                  strokeWidth={element.size}
-                  tension={0.62}
-                  lineCap="round"
-                  lineJoin="round"
-                />
-              ) : (
-                <StampNode key={index} element={element} />
-              )
-            )}
-          </Layer>
-        </Stage>
-        </div>{/* end canvas box */}
-      </div>{/* end order-1 wrapper */}
-
-      {/* ── Toolbox ── */}
-      <div className="order-2 space-y-4 rounded-3xl border border-white/10 bg-slate-950/55 p-4 xl:sticky xl:top-6">
-        {/* Drawing mode */}
-        <div className="flex flex-wrap items-center gap-2">
-          <span className="text-xs uppercase tracking-[0.22em] text-slate-400">Mode</span>
-          {(["pen", "eraser"] as const).map((t) => (
-            <button
-              key={t}
-              type="button"
-              aria-label={t === "pen" ? "Pen" : "Eraser"}
-              className={cn(
-                "flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-sm transition",
-                tool === t
-                  ? t === "eraser"
-                    ? "border-rose-300 bg-rose-400/20 text-white"
-                    : "border-sky-300 bg-sky-400/20 text-white"
-                  : "border-white/10 bg-white/5 text-slate-200 hover:bg-white/10"
-              )}
-              onClick={() => setTool(t)}
-            >
-              {t === "eraser" ? <Eraser size={13} /> : null}
-              {t === "pen" ? "Pen" : "Eraser"}
-            </button>
-          ))}
-          {tool !== "pen" && tool !== "eraser" && (
-            <span className="text-sm text-slate-400">
-              {STAMP_TOOLS.find((s) => s.id === tool)?.label ?? tool}
-            </span>
+          {/* Shape tool hint */}
+          {isShapeTool(tool) && (
+            <div className="absolute bottom-2 left-1/2 z-10 -translate-x-1/2 rounded-lg bg-slate-900/80 px-3 py-1 text-xs text-slate-400 backdrop-blur-sm pointer-events-none">
+              Click &amp; drag to draw
+            </div>
           )}
+          <Stage
+            width={Math.max(width, 1)} height={canvasHeight}
+            ref={stageRef} className="touch-none"
+            scaleX={viewport.zoom} scaleY={viewport.zoom}
+            x={viewport.x} y={viewport.y}
+            onWheel={handleWheel}
+            onPointerDown={handlePointerDown}
+            onPointerMove={handlePointerMove}
+            onPointerUp={endDrawing}
+            onPointerLeave={endDrawing}
+            onTouchStart={handleTouchStart}
+            onTouchMove={handleTouchMove}
+            onTouchEnd={handleTouchEnd}
+          >
+            <Layer>
+              <Rect width={Math.max(width, 1)} height={canvasHeight} fill={BACKGROUND_COLOR} />
+              {elements.map((el, i) => renderElement(el, i))}
+              {previewEl && renderElement(previewEl, "preview", 0.65)}
+            </Layer>
+          </Stage>
+        </div>
+      </div>
+
+      {/* ── Toolbox sidebar ── */}
+      <div className="order-2 space-y-4 rounded-3xl border border-white/10 bg-slate-950/55 p-4 xl:sticky xl:top-6">
+
+        {/* Draw tools */}
+        <div>
+          <p className="text-xs uppercase tracking-[0.22em] text-slate-400">Draw</p>
+          <div className="mt-2 grid grid-cols-2 gap-1.5 sm:grid-cols-4 xl:grid-cols-2">
+            {DRAW_TOOLS.map(({ id, label, Icon }) => (
+              <button key={id} type="button" onClick={() => setTool(id)}
+                className={cn(
+                  "flex items-center gap-1.5 rounded-2xl border px-3 py-2 text-sm transition",
+                  tool === id
+                    ? id === "eraser"
+                      ? "border-rose-300 bg-rose-400/20 text-white"
+                      : "border-sky-300 bg-sky-400/20 text-white"
+                    : "border-white/10 bg-white/5 text-slate-200 hover:bg-white/10",
+                )}>
+                <Icon size={13} /> {label}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {/* Shape tools */}
+        <div>
+          <p className="text-xs uppercase tracking-[0.22em] text-slate-400">Shapes</p>
+          <div className="mt-2 grid grid-cols-2 gap-1.5 sm:grid-cols-4 xl:grid-cols-2">
+            {SHAPE_TOOLS.map(({ id, label, Icon }) => (
+              <button key={id} type="button" onClick={() => setTool(id)}
+                className={cn(
+                  "flex items-center gap-1.5 rounded-2xl border px-3 py-2 text-sm transition",
+                  tool === id
+                    ? "border-violet-300 bg-violet-400/20 text-white"
+                    : "border-white/10 bg-white/5 text-slate-200 hover:bg-white/10",
+                )}>
+                <Icon size={13} /> {label}
+              </button>
+            ))}
+          </div>
         </div>
 
         {/* Body parts */}
         <div>
           <p className="text-xs uppercase tracking-[0.22em] text-slate-400">Body parts</p>
           <div className="mt-2 grid grid-cols-2 gap-1.5 sm:grid-cols-4 xl:grid-cols-2">
-            {BODY_STAMPS.map((stampTool) => (
-              <button
-                key={stampTool.id}
-                type="button"
+            {BODY_STAMPS.map((s) => (
+              <button key={s.id} type="button" onClick={() => setTool(s.id)}
                 className={cn(
                   "rounded-2xl border px-3 py-2 text-sm transition",
-                  tool === stampTool.id
+                  tool === s.id
                     ? "border-amber-300 bg-amber-400/20 text-white"
-                    : "border-white/10 bg-white/5 text-slate-200 hover:bg-white/10"
-                )}
-                onClick={() => setTool(stampTool.id)}
-              >
-                {stampTool.label}
+                    : "border-white/10 bg-white/5 text-slate-200 hover:bg-white/10",
+                )}>
+                {s.label}
               </button>
             ))}
           </div>
@@ -411,19 +656,15 @@ export const CanvasBoard = forwardRef<CanvasBoardHandle, CanvasBoardProps>(funct
         <div>
           <p className="text-xs uppercase tracking-[0.22em] text-slate-400">Reactions</p>
           <div className="mt-2 flex flex-wrap gap-1.5">
-            {REACTION_STAMPS.map((stampTool) => (
-              <button
-                key={stampTool.id}
-                type="button"
+            {REACTION_STAMPS.map((s) => (
+              <button key={s.id} type="button" onClick={() => setTool(s.id)}
                 className={cn(
                   "rounded-2xl border px-3 py-2 text-sm transition",
-                  tool === stampTool.id
+                  tool === s.id
                     ? "border-fuchsia-300 bg-fuchsia-400/20 text-white"
-                    : "border-white/10 bg-white/5 text-slate-200 hover:bg-white/10"
-                )}
-                onClick={() => setTool(stampTool.id)}
-              >
-                {stampTool.label}
+                    : "border-white/10 bg-white/5 text-slate-200 hover:bg-white/10",
+                )}>
+                {s.label}
               </button>
             ))}
           </div>
@@ -434,15 +675,10 @@ export const CanvasBoard = forwardRef<CanvasBoardHandle, CanvasBoardProps>(funct
           <p className="text-xs uppercase tracking-[0.22em] text-slate-400">Colors</p>
           <div className="mt-2 flex flex-wrap items-center gap-2">
             {COLOR_SWATCHES.map((swatch) => (
-              <button
-                key={swatch}
-                type="button"
-                aria-label={`Use color ${swatch}`}
+              <button key={swatch} type="button" aria-label={`Color ${swatch}`}
                 className={cn(
                   "h-8 w-8 rounded-full border-2 transition",
-                  color === swatch
-                    ? "scale-110 border-white"
-                    : "border-white/20 hover:border-white/60"
+                  color === swatch ? "scale-110 border-white" : "border-white/20 hover:border-white/60",
                 )}
                 style={{ backgroundColor: swatch }}
                 onClick={() => setColor(swatch)}
@@ -450,36 +686,15 @@ export const CanvasBoard = forwardRef<CanvasBoardHandle, CanvasBoardProps>(funct
             ))}
             <label className="ml-1 flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-3 py-1.5 text-sm text-slate-200">
               Custom
-              <input
-                type="color"
-                value={color}
-                onChange={(e) => setColor(e.target.value)}
-                className="h-7 w-9 cursor-pointer rounded border-none bg-transparent"
-              />
+              <input type="color" value={color} onChange={(e) => setColor(e.target.value)}
+                className="h-7 w-9 cursor-pointer rounded border-none bg-transparent" />
             </label>
           </div>
         </div>
-
       </div>
     </div>
   );
 });
-
-// ── Helpers ──────────────────────────────────────────────────────────────────
-
-function appendSmoothPoint(stroke: StrokeElement, x: number, y: number) {
-  const points = stroke.points;
-  if (points.length < 2) return { ...stroke, points: points.concat([x, y]) };
-
-  const lastX = points[points.length - 2];
-  const lastY = points[points.length - 1];
-  const distance = Math.hypot(x - lastX, y - lastY);
-  if (distance < 0.8) return stroke;
-
-  const midX = (lastX + x) / 2;
-  const midY = (lastY + y) / 2;
-  return { ...stroke, points: points.concat([midX, midY, x, y]) };
-}
 
 // ── Stamp renderer ────────────────────────────────────────────────────────────
 
@@ -489,7 +704,6 @@ function StampNode({ element }: { element: StampElement }) {
   const lensFill = "rgba(15, 23, 42, 0.78)";
 
   switch (element.stamp) {
-    // ── Body parts ──────────────────────────────────────────────────────────
     case "wig":
       return (
         <Group x={element.x} y={element.y}>
@@ -589,29 +803,11 @@ function StampNode({ element }: { element: StampElement }) {
           <Line points={[-scale * 0.84, scale * 0.2, -scale * 0.34, -scale * 0.18, scale * 0.26, -scale * 0.08, scale * 0.82, scale * 0.2, scale * 0.46, scale * 0.46, -scale * 0.3, scale * 0.46]} stroke={element.color} strokeWidth={strokeWidth} tension={0.42} closed lineCap="round" lineJoin="round" fill={element.color} opacity={0.2} />
         </Group>
       );
-
-    // ── Reactions ────────────────────────────────────────────────────────────
     case "heart":
       return (
         <Group x={element.x} y={element.y}>
-          <Line
-            points={[
-              0, scale * 0.72,
-              -scale * 0.72, 0,
-              -scale * 0.72, -scale * 0.34,
-              -scale * 0.36, -scale * 0.62,
-              0, -scale * 0.34,
-              scale * 0.36, -scale * 0.62,
-              scale * 0.72, -scale * 0.34,
-              scale * 0.72, 0,
-            ]}
-            closed
-            tension={0.58}
-            fill={element.color}
-            stroke={element.color}
-            strokeWidth={strokeWidth * 0.4}
-            opacity={0.92}
-          />
+          <Line points={[0, scale * 0.72, -scale * 0.72, 0, -scale * 0.72, -scale * 0.34, -scale * 0.36, -scale * 0.62, 0, -scale * 0.34, scale * 0.36, -scale * 0.62, scale * 0.72, -scale * 0.34, scale * 0.72, 0]}
+            closed tension={0.58} fill={element.color} stroke={element.color} strokeWidth={strokeWidth * 0.4} opacity={0.92} />
         </Group>
       );
     case "star": {
@@ -630,54 +826,22 @@ function StampNode({ element }: { element: StampElement }) {
     case "fire":
       return (
         <Group x={element.x} y={element.y}>
-          <Line
-            points={[
-              0, scale * 0.8,
-              scale * 0.54, scale * 0.22,
-              scale * 0.4, -scale * 0.16,
-              scale * 0.2, scale * 0.1,
-              scale * 0.16, -scale * 0.5,
-              0, -scale * 0.88,
-              -scale * 0.16, -scale * 0.5,
-              -scale * 0.2, scale * 0.1,
-              -scale * 0.4, -scale * 0.16,
-              -scale * 0.54, scale * 0.22,
-            ]}
-            closed
-            tension={0.48}
-            fill={element.color}
-            stroke={element.color}
-            strokeWidth={strokeWidth * 0.4}
-            opacity={0.88}
-          />
+          <Line points={[0, scale * 0.8, scale * 0.54, scale * 0.22, scale * 0.4, -scale * 0.16, scale * 0.2, scale * 0.1, scale * 0.16, -scale * 0.5, 0, -scale * 0.88, -scale * 0.16, -scale * 0.5, -scale * 0.2, scale * 0.1, -scale * 0.4, -scale * 0.16, -scale * 0.54, scale * 0.22]}
+            closed tension={0.48} fill={element.color} stroke={element.color} strokeWidth={strokeWidth * 0.4} opacity={0.88} />
         </Group>
       );
     case "lightning":
       return (
         <Group x={element.x} y={element.y}>
-          <Line
-            points={[
-              scale * 0.22, -scale * 0.88,
-              -scale * 0.08, -scale * 0.06,
-              scale * 0.18, -scale * 0.06,
-              -scale * 0.22, scale * 0.88,
-              scale * 0.08, scale * 0.06,
-              -scale * 0.18, scale * 0.06,
-            ]}
-            closed
-            tension={0}
-            fill={element.color}
-            stroke={element.color}
-            strokeWidth={strokeWidth * 0.3}
-            opacity={0.92}
-          />
+          <Line points={[scale * 0.22, -scale * 0.88, -scale * 0.08, -scale * 0.06, scale * 0.18, -scale * 0.06, -scale * 0.22, scale * 0.88, scale * 0.08, scale * 0.06, -scale * 0.18, scale * 0.06]}
+            closed tension={0} fill={element.color} stroke={element.color} strokeWidth={strokeWidth * 0.3} opacity={0.92} />
         </Group>
       );
     case "sparkle": {
       const lines = [
-        { angle: 0, len: scale * 0.9, w: strokeWidth * 1.2 },
-        { angle: 90, len: scale * 0.9, w: strokeWidth * 1.2 },
-        { angle: 45, len: scale * 0.56, w: strokeWidth * 0.75 },
+        { angle: 0,   len: scale * 0.9,  w: strokeWidth * 1.2 },
+        { angle: 90,  len: scale * 0.9,  w: strokeWidth * 1.2 },
+        { angle: 45,  len: scale * 0.56, w: strokeWidth * 0.75 },
         { angle: 135, len: scale * 0.56, w: strokeWidth * 0.75 },
       ];
       return (
@@ -686,9 +850,7 @@ function StampNode({ element }: { element: StampElement }) {
             const rad = (angle * Math.PI) / 180;
             const cx = Math.cos(rad) * len;
             const cy = Math.sin(rad) * len;
-            return (
-              <Line key={angle} points={[cx, cy, -cx, -cy]} stroke={element.color} strokeWidth={w} lineCap="round" />
-            );
+            return <Line key={angle} points={[cx, cy, -cx, -cy]} stroke={element.color} strokeWidth={w} lineCap="round" />;
           })}
           <Circle radius={scale * 0.11} fill={element.color} />
         </Group>
