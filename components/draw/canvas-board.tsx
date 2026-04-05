@@ -10,6 +10,8 @@ import {
   ArrowRight,
   Circle as CircleIcon,
   Eraser,
+  Feather,
+  Highlighter,
   Minus,
   MoreHorizontal,
   Pen,
@@ -20,11 +22,18 @@ import {
   Square,
   Trash2,
   Triangle as TriangleIcon,
+  Wand2,
 } from "lucide-react";
 import type { Stage as StageType } from "konva/lib/Stage";
 import type { KonvaEventObject } from "konva/lib/Node";
 
-const BACKGROUND_COLOR = "#0f172a";
+const DEFAULT_BG = "#0f172a";
+
+const BG_SWATCHES = [
+  "#f8fafc", "#f472b6", "#fb7185", "#f97316", "#facc15",
+  "#84cc16", "#2dd4bf", "#38bdf8", "#818cf8", "#a78bfa",
+  "#f59e0b", "#fbbf24", "#000000", "#94a3b8",
+];
 
 const COLOR_SWATCHES = [
   "#f8fafc", "#f472b6", "#fb7185", "#f97316", "#facc15",
@@ -61,17 +70,21 @@ const STAMP_TOOLS = [...BODY_STAMPS, ...REACTION_STAMPS];
 type BodyStamp     = (typeof BODY_STAMPS)[number]["id"];
 type ReactionStamp = (typeof REACTION_STAMPS)[number]["id"];
 type StampTool     = BodyStamp | ReactionStamp;
-type DrawTool      = "pen" | "dotted" | "spray" | "eraser";
+type BrushType     = "pen" | "dotted" | "marker" | "glow" | "chalk";
+type DrawTool      = BrushType | "spray" | "eraser";
 type ShapeToolType = "circle-tool" | "rect-tool" | "triangle-tool" | "line-tool" | "arrow-tool";
 type Tool          = DrawTool | ShapeToolType | StampTool;
 
 type LucideIcon = React.ComponentType<{ size?: number; className?: string }>;
 
 const DRAW_TOOLS: { id: DrawTool; label: string; Icon: LucideIcon }[] = [
-  { id: "pen",    label: "Pen",   Icon: Pen },
-  { id: "dotted", label: "Dots",  Icon: MoreHorizontal },
-  { id: "spray",  label: "Spray", Icon: Sparkles },
-  { id: "eraser", label: "Erase", Icon: Eraser },
+  { id: "pen",    label: "Pen",      Icon: Pen },
+  { id: "marker", label: "Marker",   Icon: Highlighter },
+  { id: "chalk",  label: "Chalk",    Icon: Feather },
+  { id: "glow",   label: "Neon",     Icon: Wand2 },
+  { id: "dotted", label: "Dots",     Icon: MoreHorizontal },
+  { id: "spray",  label: "Spray",    Icon: Sparkles },
+  { id: "eraser", label: "Erase",    Icon: Eraser },
 ];
 
 const SHAPE_TOOLS: { id: ShapeToolType; label: string; Icon: LucideIcon }[] = [
@@ -90,7 +103,7 @@ interface StrokeElement {
   color: string;
   size: number;
   opacity: number;
-  dotted: boolean;
+  brush: BrushType;
 }
 
 interface SprayElement {
@@ -189,6 +202,11 @@ function buildShape(
   }
 }
 
+function pseudoRandom(seed: number): number {
+  const x = Math.sin(seed + 1) * 10000;
+  return x - Math.floor(x);
+}
+
 function generateSprayDots(cx: number, cy: number, size: number): number[] {
   const radius = size * 5;
   const count  = Math.max(5, Math.floor(size * 0.8));
@@ -214,15 +232,70 @@ function appendSmoothPoint(stroke: StrokeElement, x: number, y: number): StrokeE
 
 function renderElement(el: CanvasElement, key: string | number, alpha = 1): React.ReactNode {
   switch (el.kind) {
-    case "stroke":
+    case "stroke": {
+      const strokeOpacity = (el.opacity / 100) * alpha;
+      if (el.brush === "chalk") {
+        return (
+          <Shape key={key} opacity={strokeOpacity} listening={false}
+            sceneFunc={(ctx) => {
+              // eslint-disable-next-line @typescript-eslint/no-explicit-any
+              const native = (ctx as any)._context as CanvasRenderingContext2D;
+              const pts = el.points;
+              if (pts.length < 4) return;
+              const saved = native.globalAlpha;
+              native.strokeStyle = el.color;
+              native.lineWidth = el.size * 0.6;
+              native.lineCap = "round";
+              const jitter = el.size * 0.5;
+              for (let pass = 0; pass < 3; pass++) {
+                native.globalAlpha = strokeOpacity * 0.38;
+                native.beginPath();
+                native.moveTo(
+                  pts[0] + (pseudoRandom(pass * 5000) - 0.5) * jitter,
+                  pts[1] + (pseudoRandom(pass * 5000 + 1) - 0.5) * jitter,
+                );
+                for (let i = 2; i < pts.length; i += 2) {
+                  native.lineTo(
+                    pts[i]     + (pseudoRandom(pass * 5000 + i) - 0.5) * jitter,
+                    pts[i + 1] + (pseudoRandom(pass * 5000 + i + 1) - 0.5) * jitter,
+                  );
+                }
+                native.stroke();
+              }
+              native.globalAlpha = saved;
+            }}
+          />
+        );
+      }
+      if (el.brush === "marker") {
+        return (
+          <Line key={key} points={el.points}
+            stroke={el.color} strokeWidth={el.size * 1.6}
+            tension={0} lineCap="square" lineJoin="miter"
+            opacity={strokeOpacity * 0.82}
+          />
+        );
+      }
+      if (el.brush === "glow") {
+        return (
+          <Line key={key} points={el.points}
+            stroke={el.color} strokeWidth={el.size}
+            tension={0.62} lineCap="round" lineJoin="round"
+            opacity={strokeOpacity}
+            shadowColor={el.color} shadowBlur={el.size * 5} shadowOpacity={0.9}
+          />
+        );
+      }
+      // pen / dotted
       return (
         <Line key={key} points={el.points}
           stroke={el.color} strokeWidth={el.size}
-          tension={el.dotted ? 0 : 0.62} lineCap="round" lineJoin="round"
-          opacity={(el.opacity / 100) * alpha}
-          dash={el.dotted ? [0.01, el.size * 2.2] : undefined}
+          tension={el.brush === "dotted" ? 0 : 0.62} lineCap="round" lineJoin="round"
+          opacity={strokeOpacity}
+          dash={el.brush === "dotted" ? [0.01, el.size * 2.2] : undefined}
         />
       );
+    }
     case "spray":
       return (
         <Shape key={key} fill={el.color} stroke="transparent"
@@ -295,6 +368,7 @@ export const CanvasBoard = forwardRef<CanvasBoardHandle, CanvasBoardProps>(funct
 ) {
   const [tool,      setTool]      = useState<Tool>("pen");
   const [color,     setColor]     = useState("#38bdf8");
+  const [bgColor,   setBgColor]   = useState(DEFAULT_BG);
   const [size,      setSize]      = useState(8);
   const [opacity,   setOpacity]   = useState(100);
   const [filled,    setFilled]    = useState(false);
@@ -386,16 +460,16 @@ export const CanvasBoard = forwardRef<CanvasBoardHandle, CanvasBoardProps>(funct
     const pos = stageRef.current?.getRelativePointerPosition();
     if (!pos) return;
 
-    if (tool === "pen" || tool === "dotted" || tool === "eraser") {
+    if (tool === "pen" || tool === "dotted" || tool === "marker" || tool === "glow" || tool === "chalk" || tool === "eraser") {
       setIsDrawing(true);
       setRedoStack([]);
       setElements(prev => [...prev, {
-        kind: "stroke",
-        color:  tool === "eraser" ? BACKGROUND_COLOR : color,
-        size:   tool === "eraser" ? size * 2.5 : size,
+        kind:    "stroke",
+        color:   tool === "eraser" ? bgColor : color,
+        size:    tool === "eraser" ? size * 2.5 : size,
         opacity: tool === "eraser" ? 100 : opacity,
-        dotted: tool === "dotted",
-        points: [pos.x, pos.y, pos.x, pos.y],
+        brush:   (tool === "eraser" ? "pen" : tool) as BrushType,
+        points:  [pos.x, pos.y, pos.x, pos.y],
       }]);
     } else if (tool === "spray") {
       setIsDrawing(true);
@@ -421,7 +495,7 @@ export const CanvasBoard = forwardRef<CanvasBoardHandle, CanvasBoardProps>(funct
     const pos = stageRef.current?.getRelativePointerPosition();
     if (!pos) return;
 
-    if (tool === "pen" || tool === "dotted" || tool === "eraser") {
+    if (tool === "pen" || tool === "dotted" || tool === "marker" || tool === "glow" || tool === "chalk" || tool === "eraser") {
       setElements(prev => {
         const next = [...prev];
         const last = next[next.length - 1];
@@ -585,7 +659,7 @@ export const CanvasBoard = forwardRef<CanvasBoardHandle, CanvasBoardProps>(funct
             onTouchEnd={handleTouchEnd}
           >
             <Layer>
-              <Rect width={Math.max(width, 1)} height={canvasHeight} fill={BACKGROUND_COLOR} />
+              <Rect width={Math.max(width, 1)} height={canvasHeight} fill={bgColor} />
               {elements.map((el, i) => renderElement(el, i))}
               {previewEl && renderElement(previewEl, "preview", 0.65)}
             </Layer>
@@ -667,6 +741,28 @@ export const CanvasBoard = forwardRef<CanvasBoardHandle, CanvasBoardProps>(funct
                 {s.label}
               </button>
             ))}
+          </div>
+        </div>
+
+        {/* Background */}
+        <div>
+          <p className="text-xs uppercase tracking-[0.22em] text-slate-400">Background</p>
+          <div className="mt-2 flex flex-wrap items-center gap-2">
+            {BG_SWATCHES.map((swatch) => (
+              <button key={swatch} type="button" aria-label={`Background ${swatch}`}
+                className={cn(
+                  "h-8 w-8 rounded-full border-2 transition",
+                  bgColor === swatch ? "scale-110 border-white" : "border-white/20 hover:border-white/60",
+                )}
+                style={{ backgroundColor: swatch }}
+                onClick={() => setBgColor(swatch)}
+              />
+            ))}
+            <label className="ml-1 flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-3 py-1.5 text-sm text-slate-200">
+              Custom
+              <input type="color" value={bgColor} onChange={(e) => setBgColor(e.target.value)}
+                className="h-7 w-9 cursor-pointer rounded border-none bg-transparent" />
+            </label>
           </div>
         </div>
 
