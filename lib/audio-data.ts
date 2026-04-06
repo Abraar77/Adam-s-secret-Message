@@ -15,16 +15,19 @@ export type ParsedAudioDataUrl = {
 };
 
 export function parseAudioDataUrl(value: string): ParsedAudioDataUrl {
-  // data URLs may have codec params after a semicolon, e.g. "audio/webm;codecs=opus"
-  const match = value.match(
-    /^data:(audio\/[a-z0-9.;=+\-]+);base64,([A-Za-z0-9+/=]+)$/i,
+  // Strip whitespace — FileReader can inject newlines into long base64 strings
+  const cleaned = value.replace(/\s/g, "");
+
+  // MIME allows spaces in codec params e.g. "audio/webm; codecs=opus"
+  const match = cleaned.match(
+    /^data:(audio\/[^;,]+(?:;[^,]*)?);base64,([A-Za-z0-9+/=]+)$/i,
   );
   if (!match) {
     throw new Error("Audio format is invalid.");
   }
 
-  const mimeType = match[1].toLowerCase();
-  const baseType = mimeType.split(";")[0];
+  const mimeType = match[1].toLowerCase().trim();
+  const baseType = mimeType.split(";")[0].trim();
 
   if (!SUPPORTED_BASE_TYPES.has(baseType)) {
     throw new Error("Unsupported audio format. Please use a modern browser.");
