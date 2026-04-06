@@ -56,30 +56,28 @@ export default function VoiceClient({ slug, displayName }: Props) {
     setError(null);
     setPhase("requesting");
 
-    // Step 1: check if mic is already permanently blocked (no prompt will appear)
-    if (typeof navigator !== "undefined" && navigator.permissions) {
-      try {
-        const perm = await navigator.permissions.query({ name: "microphone" as PermissionName });
-        if (perm.state === "denied") {
-          setPhase("idle");
-          setError(
-            "Microphone is blocked for this site. Tap the lock icon in your browser's address bar, set Microphone to Allow, then refresh and try again.",
-          );
-          return;
-        }
-      } catch { /* permissions API not available on this browser — continue */ }
-    }
-
-    // Step 2: acquire mic stream — isolate permission errors from recorder errors
+    // getUserMedia MUST be called immediately — any await before it breaks the
+    // user-gesture window on Android Chrome and causes a silent NotAllowedError.
     let stream: MediaStream;
     try {
       stream = await navigator.mediaDevices.getUserMedia({ audio: true });
     } catch (err) {
       setPhase("idle");
       const name = err instanceof Error ? err.name : "";
+
       if (name === "NotAllowedError" || name === "PermissionDeniedError" || name === "SecurityError") {
+        // Now (after failure) it's safe to check whether it's permanently blocked
+        let permanentlyBlocked = false;
+        if (navigator.permissions) {
+          try {
+            const perm = await navigator.permissions.query({ name: "microphone" as PermissionName });
+            permanentlyBlocked = perm.state === "denied";
+          } catch { /* ignore */ }
+        }
         setError(
-          "Microphone access was blocked. Tap the lock icon in your browser's address bar, set Microphone to Allow, then refresh and try again.",
+          permanentlyBlocked
+            ? "Microphone is blocked for this site. Tap the lock icon in your browser's address bar, set Microphone to Allow, then refresh and try again."
+            : "Microphone access was denied. Please tap Allow when the browser asks for microphone permission.",
         );
       } else if (name === "NotFoundError" || name === "DevicesNotFoundError") {
         setError("No microphone found on this device.");
