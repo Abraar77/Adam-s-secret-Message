@@ -15,7 +15,7 @@ import { cn } from "@/lib/utils";
 
 type Phase = "idle" | "requesting" | "recording" | "recorded" | "submitting" | "submitted";
 
-const MAX_RECORDING_SECONDS = 90;
+const MAX_RECORDING_SECONDS = 25;
 
 interface Props {
   slug: string;
@@ -121,9 +121,8 @@ export default function VoiceClient({ slug, displayName }: Props) {
       audioCtxRef.current = ctx;
 
       const arrayBuffer = await blob.arrayBuffer();
-      const audioBuffer = await ctx.decodeAudioData(arrayBuffer);
-
       const source = ctx.createBufferSource();
+      source.buffer = await ctx.decodeAudioData(arrayBuffer);
       const cleanup = connectEffect(ctx, source, preset, ctx.destination);
 
       source.onended = () => {

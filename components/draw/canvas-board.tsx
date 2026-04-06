@@ -373,7 +373,7 @@ export const CanvasBoard = forwardRef<CanvasBoardHandle, CanvasBoardProps>(funct
   const [opacity,   setOpacity]   = useState(100);
   const [filled,    setFilled]    = useState(false);
   const [elements,  setElements]  = useState<CanvasElement[]>([]);
-  const [, setRedoStack]          = useState<CanvasElement[]>([]);
+  const [, setRedoStack]          = useState<(CanvasElement | CanvasElement[])[]>([]);
   const [isDrawing, setIsDrawing] = useState(false);
   const [previewEl, setPreviewEl] = useState<ShapeEl | null>(null);
   const [viewport,  setViewport]  = useState({ zoom: 1, x: 0, y: 0 });
@@ -529,7 +529,12 @@ export const CanvasBoard = forwardRef<CanvasBoardHandle, CanvasBoardProps>(funct
     setIsDrawing(false);
   };
 
-  const clear = () => { setElements([]); setRedoStack([]); setIsDrawing(false); setPreviewEl(null); };
+  const clear = () => {
+    if (elements.length) setRedoStack(cur => [...cur, [...elements]]);
+    setElements([]);
+    setIsDrawing(false);
+    setPreviewEl(null);
+  };
 
   const undo = () => {
     setElements(prev => {
@@ -545,8 +550,12 @@ export const CanvasBoard = forwardRef<CanvasBoardHandle, CanvasBoardProps>(funct
     setRedoStack(prev => {
       if (!prev.length) return prev;
       const next = [...prev];
-      const restored = next.pop();
-      if (restored) setElements(cur => [...cur, restored]);
+      const restored = next.pop()!;
+      if (Array.isArray(restored)) {
+        setElements(restored);
+      } else {
+        setElements(cur => [...cur, restored]);
+      }
       return next;
     });
   };
