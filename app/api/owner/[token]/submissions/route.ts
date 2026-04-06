@@ -9,7 +9,7 @@ import { prisma } from "@/lib/prisma";
 
 export async function GET(
   req: NextRequest,
-  { params }: { params: Promise<{ token: string }> }
+  { params }: { params: Promise<{ token: string }> },
 ) {
   const { token } = await params;
   const profile = await prisma.profile.findUnique({
@@ -28,8 +28,8 @@ export async function GET(
     Math.max(
       1,
       Number(searchParams.get("limit") ?? `${OWNER_SUBMISSIONS_PAGE_SIZE}`) ||
-        OWNER_SUBMISSIONS_PAGE_SIZE
-    )
+        OWNER_SUBMISSIONS_PAGE_SIZE,
+    ),
   );
 
   const rows = await prisma.submission.findMany({
@@ -37,7 +37,15 @@ export async function GET(
     orderBy: { createdAt: "desc" },
     skip: offset,
     take: limit + 1,
-    select: { id: true, imageUrl: true, note: true, createdAt: true },
+    select: {
+      id: true,
+      type: true,
+      imageUrl: true,
+      audioUrl: true,
+      audioPreset: true,
+      note: true,
+      createdAt: true,
+    },
   });
 
   const hasMore = rows.length > limit;
@@ -45,6 +53,6 @@ export async function GET(
 
   return NextResponse.json(
     { submissions: pageRows.map(mapOwnerSubmission), hasMore },
-    { headers: { "Cache-Control": "private, no-store" } }
+    { headers: { "Cache-Control": "private, no-store" } },
   );
 }

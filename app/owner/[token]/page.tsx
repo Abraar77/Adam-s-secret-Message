@@ -23,7 +23,15 @@ export default async function OwnerPage({
     where: { profileId: profile.id },
     orderBy: { createdAt: "desc" },
     take: OWNER_SUBMISSIONS_PAGE_SIZE + 1,
-    select: { id: true, imageUrl: true, note: true, createdAt: true },
+    select: {
+      id: true,
+      type: true,
+      imageUrl: true,
+      audioUrl: true,
+      audioPreset: true,
+      note: true,
+      createdAt: true,
+    },
   });
 
   const hasMore = submissions.length > OWNER_SUBMISSIONS_PAGE_SIZE;
@@ -44,6 +52,7 @@ export default async function OwnerPage({
       <OwnerClient
         token={token}
         displayName={profile.displayName}
+        profileType={profile.type}
         publicUrl={`${origin}/${profile.slug}`}
         submissions={initialSubmissions.map(mapOwnerSubmission)}
         initialHasMore={hasMore}

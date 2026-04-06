@@ -6,69 +6,90 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 
+type ProfileType = "DRAWING" | "VOICE";
+
 type SignupResult = {
-  profile: {
-    displayName: string;
-    slug: string;
-  };
+  profile: { displayName: string; slug: string; type: ProfileType };
   publicUrl: string;
   ownerUrl: string;
 };
 
 const STORAGE_KEY = "draw-me:last-owner-link";
 
-export function SignupPanel() {
+const COPY: Record<
+  ProfileType,
+  { badge: string; headline: string; sub: string; placeholder: string; steps: string[] }
+> = {
+  DRAWING: {
+    badge: "Private Drawing Inbox",
+    headline: "Type your name. Get one public link. Keep every drawing private.",
+    sub: "Friends open your public page, sketch something for you, and leave an optional anonymous note. Only your private owner link can open the inbox.",
+    placeholder: "Adam",
+    steps: [
+      "Enter only your name. No account needed.",
+      "Friends can draw and leave an optional anonymous note.",
+      "Only your private owner link can view or delete submissions.",
+    ],
+  },
+  VOICE: {
+    badge: "Private Voice Note Inbox",
+    headline: "Type your name. Get one public link. Receive secret voice notes.",
+    sub: "Friends open your public page, record a voice note with a fun effect, and send it anonymously. Only your private owner link can play them back.",
+    placeholder: "Adam",
+    steps: [
+      "Enter only your name. No account needed.",
+      "Friends record a voice note and pick a fun voice effect.",
+      "Only your private owner link can play or delete submissions.",
+    ],
+  },
+};
+
+interface Props {
+  profileType: ProfileType;
+}
+
+export function SignupPanel({ profileType }: Props) {
   const [displayName, setDisplayName] = useState("");
-  const [submitting, setSubmitting] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [result, setResult] = useState<SignupResult | null>(null);
+  const [submitting, setSubmitting]   = useState(false);
+  const [error, setError]             = useState<string | null>(null);
+  const [result, setResult]           = useState<SignupResult | null>(null);
   const [savedOwnerUrl, setSavedOwnerUrl] = useState<string | null>(null);
+
+  const copy = COPY[profileType];
 
   useEffect(() => {
     try {
       const stored = window.localStorage.getItem(STORAGE_KEY);
-      if (stored) {
-        setSavedOwnerUrl(stored);
-      }
-    } catch (storageError) {
-      console.error(storageError);
-    }
+      if (stored) setSavedOwnerUrl(stored);
+    } catch { /* localStorage unavailable */ }
   }, []);
 
-  const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
+  const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
     setSubmitting(true);
     setError(null);
 
     try {
-      const response = await fetch("/api/profiles", {
+      const res = await fetch("/api/profiles", {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({ displayName }),
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ displayName, type: profileType }),
       });
-      
 
-      const contentType = response.headers.get("content-type") ?? "";
+      const contentType = res.headers.get("content-type") ?? "";
       if (!contentType.includes("application/json")) {
-        throw new Error(`Server error (${response.status}). Please try again.`);
+        throw new Error(`Server error (${res.status}). Please try again.`);
       }
-      const json = (await response.json()) as SignupResult & { error?: string };
-      if (!response.ok) {
-        throw new Error(json.error || "Failed to create your links.");
-      }
+
+      const json = (await res.json()) as SignupResult & { error?: string };
+      if (!res.ok) throw new Error(json.error || "Failed to create your links.");
 
       setResult(json);
       setDisplayName("");
       setSavedOwnerUrl(json.ownerUrl);
       window.localStorage.setItem(STORAGE_KEY, json.ownerUrl);
-    } catch (submitError) {
-      const message =
-        submitError instanceof Error
-          ? submitError.message
-          : "Failed to create your links.";
-      setError(message);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to create your links.");
     } finally {
       setSubmitting(false);
     }
@@ -80,17 +101,11 @@ export function SignupPanel() {
     <div className="grid gap-6 lg:grid-cols-[1.15fr_0.85fr]">
       <Card className="border-white/15 bg-slate-950/60 p-6 sm:p-8">
         <div className="space-y-3">
-          <p className="text-sm uppercase tracking-[0.24em] text-sky-300">
-            Private Drawing Inbox
-          </p>
+          <p className="text-sm uppercase tracking-[0.24em] text-sky-300">{copy.badge}</p>
           <h1 className="max-w-2xl text-4xl font-semibold leading-tight text-white sm:text-5xl">
-            Type your name. Get one public link. Keep every drawing private.
+            {copy.headline}
           </h1>
-          <p className="max-w-xl text-base leading-7 text-slate-300">
-            Friends open your public page, sketch something for you, and send an
-            optional anonymous note. Only your private owner link can open the
-            saved inbox.
-          </p>
+          <p className="max-w-xl text-base leading-7 text-slate-300">{copy.sub}</p>
         </div>
 
         <form onSubmit={handleSubmit} className="mt-8 space-y-4">
@@ -101,53 +116,32 @@ export function SignupPanel() {
             <Input
               id="displayName"
               value={displayName}
-              onChange={(event) => setDisplayName(event.target.value)}
-              placeholder="Adam"
+              onChange={(e) => setDisplayName(e.target.value)}
+              placeholder={copy.placeholder}
               className="mt-2 h-12 bg-white/5 text-base"
               maxLength={60}
             />
           </div>
-
-          <Button
-            type="submit"
-            size="lg"
-            disabled={submitting}
-            className="w-full sm:w-auto"
-          >
-            {submitting ? "Creating links..." : "Sign up and generate links"}
+          <Button type="submit" size="lg" disabled={submitting} className="w-full sm:w-auto">
+            {submitting ? "Creating links…" : "Sign up and generate links"}
           </Button>
-
           {error ? <p className="text-sm text-rose-300">{error}</p> : null}
         </form>
 
         <div className="mt-8 grid gap-3 sm:grid-cols-3">
-          <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
-            <p className="text-sm text-slate-200">1. Sign up</p>
-            <p className="mt-2 text-sm leading-6 text-slate-400">
-              Enter only your name. No public profile setup.
-            </p>
-          </div>
-          <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
-            <p className="text-sm text-slate-200">2. Share the public link</p>
-            <p className="mt-2 text-sm leading-6 text-slate-400">
-              Friends can draw and leave an optional anonymous note.
-            </p>
-          </div>
-          <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
-            <p className="text-sm text-slate-200">3. Open your inbox</p>
-            <p className="mt-2 text-sm leading-6 text-slate-400">
-              Only the private owner link can view or delete submissions.
-            </p>
-          </div>
+          {copy.steps.map((step, i) => (
+            <div key={i} className="rounded-2xl border border-white/10 bg-white/5 p-4">
+              <p className="text-sm text-slate-200">{i + 1}. {i === 0 ? "Sign up" : i === 1 ? "Share the link" : "Open your inbox"}</p>
+              <p className="mt-2 text-sm leading-6 text-slate-400">{step}</p>
+            </div>
+          ))}
         </div>
       </Card>
 
       <Card className="border-sky-400/20 bg-slate-950/70 p-6">
         <div className="flex items-start justify-between gap-3">
           <div>
-            <p className="text-sm uppercase tracking-[0.22em] text-sky-200">
-              Your Links
-            </p>
+            <p className="text-sm uppercase tracking-[0.22em] text-sky-200">Your Links</p>
             <h2 className="mt-2 text-2xl font-semibold text-white">
               {result ? result.profile.displayName : "Ready after signup"}
             </h2>
@@ -200,15 +194,14 @@ export function SignupPanel() {
                 </a>
               </div>
               <p className="text-sm leading-6 text-slate-400">
-                This browser remembers the last private owner link so you can
-                reopen it later.
+                This browser remembers the last private owner link so you can reopen it later.
               </p>
             </div>
           </div>
         ) : (
           <div className="mt-6 rounded-2xl border border-dashed border-white/15 bg-white/5 p-5 text-sm leading-7 text-slate-400">
-            Create your link once, then copy the public link for friends and
-            keep the private owner link for yourself.
+            Create your link once, then copy the public link for friends and keep the private
+            owner link for yourself.
           </div>
         )}
       </Card>

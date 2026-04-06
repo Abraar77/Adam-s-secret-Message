@@ -18,9 +18,8 @@ const createSchema = z.object({
     .string()
     .max(60)
     .transform((value) => normalizeDisplayName(value))
-    .refine((value) => value.length > 0, {
-      message: "Name is required.",
-    }),
+    .refine((value) => value.length > 0, { message: "Name is required." }),
+  type: z.enum(["DRAWING", "VOICE"]).default("DRAWING"),
 });
 
 export async function POST(req: NextRequest) {
@@ -38,7 +37,7 @@ export async function POST(req: NextRequest) {
             "X-RateLimit-Remaining": "0",
             "X-RateLimit-Reset": rl.resetAt.toString(),
           },
-        }
+        },
       );
     }
 
@@ -51,50 +50,38 @@ export async function POST(req: NextRequest) {
     const ownerTokenHash = hashOwnerToken(ownerToken);
 
     const profile = await prisma.profile.create({
-      data: {
-        id: uuid(),
-        displayName,
-        slug,
-        ownerTokenHash,
-      },
-      select: {
-        displayName: true,
-        slug: true,
-      },
+      data: { id: uuid(), displayName, slug, ownerTokenHash, type: data.type },
+      select: { displayName: true, slug: true, type: true },
     });
 
     const origin = getRequestOrigin(req.url);
 
     return NextResponse.json(
       {
-        profile: {
-          displayName: profile.displayName,
-          slug: profile.slug,
-        },
+        profile: { displayName: profile.displayName, slug: profile.slug, type: profile.type },
         publicUrl: `${origin}/${profile.slug}`,
         ownerUrl: `${origin}/owner/${ownerToken}`,
       },
-      { headers: { "Cache-Control": "no-store" } }
+      { headers: { "Cache-Control": "no-store" } },
     );
   } catch (error) {
     if (error instanceof z.ZodError) {
       return NextResponse.json(
         { error: error.issues[0]?.message ?? "Name is invalid." },
-        { status: 400, headers: { "Cache-Control": "no-store" } }
+        { status: 400, headers: { "Cache-Control": "no-store" } },
       );
     }
     if (error instanceof SyntaxError) {
       return NextResponse.json(
         { error: "Request body is invalid." },
-        { status: 400, headers: { "Cache-Control": "no-store" } }
+        { status: 400, headers: { "Cache-Control": "no-store" } },
       );
     }
-    const message =
-      error instanceof Error ? error.message : "Failed to create profile";
+    const message = error instanceof Error ? error.message : "Failed to create profile";
     console.error("[api/profiles POST]", error);
     return NextResponse.json(
       { error: message },
-      { status: 500, headers: { "Cache-Control": "no-store" } }
+      { status: 500, headers: { "Cache-Control": "no-store" } },
     );
   }
 }

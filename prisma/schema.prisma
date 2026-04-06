@@ -6,23 +6,39 @@ datasource db {
   provider = "postgresql"
 }
 
+enum ProfileType {
+  DRAWING
+  VOICE
+}
+
+enum SubmissionType {
+  DRAWING
+  VOICE
+}
+
 model Profile {
   id             String       @id @default(cuid())
   displayName    String
   slug           String       @unique
   ownerTokenHash String       @unique
+  type           ProfileType  @default(DRAWING)
   createdAt      DateTime     @default(now())
   updatedAt      DateTime     @updatedAt
   submissions    Submission[]
 }
 
 model Submission {
-  id        String   @id @default(cuid())
-  profile   Profile  @relation(fields: [profileId], references: [id], onDelete: Cascade)
-  profileId String
-  imageUrl  String
-  note      String?
-  createdAt DateTime @default(now())
+  id          String         @id @default(cuid())
+  profile     Profile        @relation(fields: [profileId], references: [id], onDelete: Cascade)
+  profileId   String
+  type        SubmissionType @default(DRAWING)
+  imageUrl    String?
+  audioUrl    String?
+  audioPreset String?
+  note        String?
+  createdAt   DateTime       @default(now())
+  expiresAt   DateTime
 
   @@index([profileId, createdAt])
+  @@index([expiresAt])
 }
