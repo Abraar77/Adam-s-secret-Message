@@ -37,6 +37,7 @@ function VoicePlayer({ audioUrl, preset }: { audioUrl: string; preset: string })
       const audioBuffer = await ctx.decodeAudioData(arrayBuffer);
 
       const source = ctx.createBufferSource();
+      source.buffer = audioBuffer;
       const cleanup = connectEffect(ctx, source, preset as VoicePreset, ctx.destination);
 
       source.onended = () => {
