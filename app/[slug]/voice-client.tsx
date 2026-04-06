@@ -56,19 +56,36 @@ export default function VoiceClient({ slug, displayName }: Props) {
     setError(null);
     setPhase("requesting");
 
-    // Step 1: acquire mic stream — isolate permission errors from recorder errors
+    // Step 1: check if mic is already permanently blocked (no prompt will appear)
+    if (typeof navigator !== "undefined" && navigator.permissions) {
+      try {
+        const perm = await navigator.permissions.query({ name: "microphone" as PermissionName });
+        if (perm.state === "denied") {
+          setPhase("idle");
+          setError(
+            "Microphone is blocked for this site. Tap the lock icon in your browser's address bar, set Microphone to Allow, then refresh and try again.",
+          );
+          return;
+        }
+      } catch { /* permissions API not available on this browser — continue */ }
+    }
+
+    // Step 2: acquire mic stream — isolate permission errors from recorder errors
     let stream: MediaStream;
     try {
       stream = await navigator.mediaDevices.getUserMedia({ audio: true });
     } catch (err) {
       setPhase("idle");
       const name = err instanceof Error ? err.name : "";
-      const denied = name === "NotAllowedError" || name === "PermissionDeniedError";
-      setError(
-        denied
-          ? "Microphone access denied. Please allow mic access in your browser/app settings and try again."
-          : "Could not access your microphone. Make sure no other app is using it.",
-      );
+      if (name === "NotAllowedError" || name === "PermissionDeniedError" || name === "SecurityError") {
+        setError(
+          "Microphone access was blocked. Tap the lock icon in your browser's address bar, set Microphone to Allow, then refresh and try again.",
+        );
+      } else if (name === "NotFoundError" || name === "DevicesNotFoundError") {
+        setError("No microphone found on this device.");
+      } else {
+        setError("Could not access your microphone. Make sure no other app is using it.");
+      }
       return;
     }
 
