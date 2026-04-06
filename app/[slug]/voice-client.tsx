@@ -149,8 +149,11 @@ export default function VoiceClient({ slug, displayName }: Props) {
 
     setError(null);
     try {
-      // Close any existing context to avoid accumulating them
-      await audioCtxRef.current?.close();
+      // Close previous context only if it hasn't already been closed by onended
+      const prev = audioCtxRef.current;
+      if (prev && prev.state !== "closed") await prev.close();
+      audioCtxRef.current = null;
+
       const ctx = new AudioContext();
       audioCtxRef.current = ctx;
 
@@ -159,9 +162,13 @@ export default function VoiceClient({ slug, displayName }: Props) {
       source.buffer = await ctx.decodeAudioData(arrayBuffer);
       const cleanup = connectEffect(ctx, source, preset, ctx.destination);
 
+      const closeCtx = () => {
+        if (ctx.state !== "closed") ctx.close();
+      };
+
       source.onended = () => {
         cleanup();
-        ctx.close();
+        closeCtx();
         setPreviewing(false);
         stopPreviewRef.current = null;
       };
@@ -171,7 +178,7 @@ export default function VoiceClient({ slug, displayName }: Props) {
       stopPreviewRef.current = () => {
         try { source.stop(); } catch { /* already ended */ }
         cleanup();
-        ctx.close();
+        closeCtx();
       };
     } catch (err) {
       console.error("Preview failed:", err);
