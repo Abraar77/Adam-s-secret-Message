@@ -55,10 +55,32 @@ export default function VoiceClient({ slug, displayName }: Props) {
   const startRecording = async () => {
     setError(null);
     setPhase("requesting");
+
+    // Step 1: acquire mic stream — isolate permission errors from recorder errors
+    let stream: MediaStream;
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    } catch (err) {
+      setPhase("idle");
+      const name = err instanceof Error ? err.name : "";
+      const denied = name === "NotAllowedError" || name === "PermissionDeniedError";
+      setError(
+        denied
+          ? "Microphone access denied. Please allow mic access in your browser/app settings and try again."
+          : "Could not access your microphone. Make sure no other app is using it.",
+      );
+      return;
+    }
+
+    // Step 2: create recorder — fall back to no mimeType if browser rejects it
+    try {
       const mimeType = getSupportedAudioMimeType();
-      const recorder = new MediaRecorder(stream, mimeType ? { mimeType } : undefined);
+      let recorder: MediaRecorder;
+      try {
+        recorder = new MediaRecorder(stream, mimeType ? { mimeType } : undefined);
+      } catch {
+        recorder = new MediaRecorder(stream);
+      }
       const chunks: BlobPart[] = [];
 
       recorder.ondataavailable = (e) => { if (e.data.size > 0) chunks.push(e.data); };
@@ -76,12 +98,9 @@ export default function VoiceClient({ slug, displayName }: Props) {
       setPhase("recording");
       timerRef.current = setInterval(() => setElapsed((n) => n + 1), 1000);
     } catch (err) {
+      stream.getTracks().forEach((t) => t.stop());
       setPhase("idle");
-      setError(
-        err instanceof Error && err.name === "NotAllowedError"
-          ? "Microphone access denied. Please allow mic access and try again."
-          : "Could not start recording. Please check your microphone.",
-      );
+      setError("Could not start recording. Try a different browser.");
     }
   };
 
